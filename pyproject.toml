@@ -1,0 +1,36 @@
+[project]
+name = "permitflow"
+version = "0.1.0"
+description = "Permit Status Tracker for real-estate development"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pandas>=2.2.0",
+    "python-multipart>=0.0.6",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite>=0.19.0",
+    "psycopg2-binary>=2.9.0",
+    "mangum>=0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.26.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"

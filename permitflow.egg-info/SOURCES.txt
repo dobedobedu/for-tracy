@@ -1,0 +1,13 @@
+pyproject.toml
+permitflow.egg-info/PKG-INFO
+permitflow.egg-info/SOURCES.txt
+permitflow.egg-info/dependency_links.txt
+permitflow.egg-info/requires.txt
+permitflow.egg-info/top_level.txt
+tests/test_communities.py
+tests/test_comparison.py
+tests/test_engine.py
+tests/test_filename_date_upload.py
+tests/test_filename_parser.py
+tests/test_smoke_real.py
+tests/test_summary.py
