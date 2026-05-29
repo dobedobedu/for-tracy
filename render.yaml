@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: for-tracy-backend
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://neondb_owner:npg_yozpk1SaQN5Y@ep-orange-dew-aq9gl7r7-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require
