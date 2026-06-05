@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from store.interface import (
     EventLogStore, PermitRecord, Observation, Upload,
-    StatusChangeRecord, TimelineEntry,
+    StatusChangeRecord, TimelineEntry, StreetCommunityMapping,
 )
 from engine.status import Milestone
 
@@ -76,6 +76,14 @@ class SQLiteStore(EventLogStore):
             CREATE INDEX IF NOT EXISTS idx_observations_record ON observations(record_number);
             CREATE INDEX IF NOT EXISTS idx_observations_upload ON observations(upload_id);
             CREATE INDEX IF NOT EXISTS idx_status_changes_upload ON status_changes(detected_on_upload_id);
+
+            CREATE TABLE IF NOT EXISTS street_community (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                street_name TEXT NOT NULL,
+                community_name TEXT NOT NULL,
+                UNIQUE(street_name, community_name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_street_community_street ON street_community(street_name);
         """)
         conn.commit()
 
@@ -260,3 +268,53 @@ class SQLiteStore(EventLogStore):
         if self.conn:
             self.conn.close()
             self.conn = None
+
+    def get_street_community_map(self) -> dict[str, list[str]]:
+        conn = self._get_conn()
+        rows = conn.execute("SELECT street_name, community_name FROM street_community").fetchall()
+        result: dict[str, list[str]] = {}
+        for r in rows:
+            key = r["street_name"].strip().upper()
+            if not key:
+                continue
+            result.setdefault(key, []).append(r["community_name"].strip())
+        return result
+
+    def upsert_street_community(self, street_name: str, community_name: str) -> None:
+        conn = self._get_conn()
+        conn.execute(
+            """INSERT INTO street_community (street_name, community_name)
+               VALUES (?, ?)
+               ON CONFLICT(street_name, community_name) DO NOTHING""",
+            (street_name.strip(), community_name.strip()),
+        )
+        conn.commit()
+
+    def replace_all_street_communities(self, mappings: list[tuple[str, str]]) -> None:
+        conn = self._get_conn()
+        conn.execute("DELETE FROM street_community")
+        for street_name, community_name in mappings:
+            conn.execute(
+                "INSERT INTO street_community (street_name, community_name) VALUES (?, ?)",
+                (street_name.strip(), community_name.strip()),
+            )
+        conn.commit()
+
+    def list_street_communities(self) -> list[StreetCommunityMapping]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT id, street_name, community_name FROM street_community ORDER BY community_name, street_name"
+        ).fetchall()
+        return [
+            StreetCommunityMapping(
+                id=r["id"],
+                street_name=r["street_name"],
+                community_name=r["community_name"],
+            )
+            for r in rows
+        ]
+
+    def delete_street_community(self, mapping_id: int) -> None:
+        conn = self._get_conn()
+        conn.execute("DELETE FROM street_community WHERE id = ?", (mapping_id,))
+        conn.commit()

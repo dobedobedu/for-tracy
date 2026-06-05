@@ -47,7 +47,8 @@ def ingest_csv(
     if scope is None:
         scope = ScopeFilter()
 
-    parsed_rows, dropped = parse_csv(df, scope)
+    street_community_map = store.get_street_community_map()
+    parsed_rows, dropped = parse_csv(df, scope, street_community_map)
     row_count_after_scope = len(parsed_rows)
 
     report_date = parse_report_date_from_filename(filename)

@@ -3,7 +3,7 @@ import io
 import csv
 from datetime import datetime
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -101,9 +101,16 @@ async def get_kanban(
             changes = s.get_latest_changes(latest_upload.id)
 
     if community:
-        # Support multiple communities as comma-separated
-        communities = [c.strip().upper() for c in community.split(",")]
-        permits = [p for p in permits if any(c in p.address.upper() for c in communities)]
+        # Support multiple communities as comma-separated. The community field uses
+        # " | " to separate multiple communities for a single permit (e.g. when a
+        # street spans two developments).
+        requested = [c.strip().upper() for c in community.split(",")]
+        def permit_matches(req: str, permit) -> bool:
+            stored = [c.strip().upper() for c in (permit.community or "").split("|")]
+            if any(req == s for s in stored):
+                return True
+            return req in permit.address.upper()
+        permits = [p for p in permits if any(permit_matches(r, p) for r in requested)]
 
     changed_records = {}
     for c in changes:
@@ -410,3 +417,54 @@ async def get_calendar():
 static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
 if os.path.exists(static_dir):
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+
+
+@app.get("/api/streets")
+async def list_streets():
+    s = get_store()
+    rows = s.list_street_communities()
+    return {
+        "mappings": [
+            {
+                "id": r.id,
+                "street_name": r.street_name,
+                "community_name": r.community_name,
+            }
+            for r in rows
+        ]
+    }
+
+
+@app.post("/api/streets")
+async def upsert_street(payload: dict = Body(...)):
+    street_name = (payload.get("street_name") or "").strip()
+    community_name = (payload.get("community_name") or "").strip()
+    if not street_name or not community_name:
+        raise HTTPException(status_code=400, detail="street_name and community_name required")
+    s = get_store()
+    s.upsert_street_community(street_name, community_name)
+    return {"ok": True, "street_name": street_name, "community_name": community_name}
+
+
+@app.post("/api/streets/bulk")
+async def bulk_replace_streets(payload: dict = Body(...)):
+    """Replace the entire mapping table. Used for the initial seed or full re-import."""
+    mappings = payload.get("mappings") or []
+    if not isinstance(mappings, list):
+        raise HTTPException(status_code=400, detail="mappings must be a list")
+    cleaned: list[tuple[str, str]] = []
+    for m in mappings:
+        street = (m.get("street_name") or "").strip()
+        community = (m.get("community_name") or "").strip()
+        if street and community:
+            cleaned.append((street, community))
+    s = get_store()
+    s.replace_all_street_communities(cleaned)
+    return {"ok": True, "count": len(cleaned)}
+
+
+@app.delete("/api/streets/{mapping_id}")
+async def delete_street(mapping_id: int):
+    s = get_store()
+    s.delete_street_community(mapping_id)
+    return {"ok": True}

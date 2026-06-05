@@ -7,7 +7,7 @@ from psycopg2.extras import RealDictCursor
 
 from store.interface import (
     EventLogStore, PermitRecord, Observation, Upload,
-    StatusChangeRecord, TimelineEntry,
+    StatusChangeRecord, TimelineEntry, StreetCommunityMapping,
 )
 from engine.status import Milestone
 
@@ -85,6 +85,18 @@ class PostgresStore(EventLogStore):
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_status_changes_upload
                 ON status_changes(detected_on_upload_id)
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS street_community (
+                    id SERIAL PRIMARY KEY,
+                    street_name TEXT NOT NULL,
+                    community_name TEXT NOT NULL,
+                    UNIQUE(street_name, community_name)
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_street_community_street
+                ON street_community(street_name)
             """)
         conn.commit()
 
@@ -303,3 +315,62 @@ class PostgresStore(EventLogStore):
         if self.conn:
             self.conn.close()
             self.conn = None
+
+    def get_street_community_map(self) -> dict[str, list[str]]:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT street_name, community_name FROM street_community")
+            rows = cur.fetchall()
+        result: dict[str, list[str]] = {}
+        for r in rows:
+            key = (r["street_name"] or "").strip().upper()
+            if not key:
+                continue
+            result.setdefault(key, []).append((r["community_name"] or "").strip())
+        return result
+
+    def upsert_street_community(self, street_name: str, community_name: str) -> None:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO street_community (street_name, community_name)
+                   VALUES (%s, %s)
+                   ON CONFLICT (street_name, community_name) DO NOTHING""",
+                (street_name.strip(), community_name.strip()),
+            )
+        conn.commit()
+
+    def replace_all_street_communities(self, mappings: list[tuple[str, str]]) -> None:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM street_community")
+            for street_name, community_name in mappings:
+                cur.execute(
+                    "INSERT INTO street_community (street_name, community_name) VALUES (%s, %s)",
+                    (street_name.strip(), community_name.strip()),
+                )
+        conn.commit()
+
+    def list_street_communities(self) -> list[StreetCommunityMapping]:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, street_name, community_name
+                   FROM street_community
+                   ORDER BY community_name, street_name"""
+            )
+            rows = cur.fetchall()
+        return [
+            StreetCommunityMapping(
+                id=r["id"],
+                street_name=r["street_name"],
+                community_name=r["community_name"],
+            )
+            for r in rows
+        ]
+
+    def delete_street_community(self, mapping_id: int) -> None:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM street_community WHERE id = %s", (mapping_id,))
+        conn.commit()

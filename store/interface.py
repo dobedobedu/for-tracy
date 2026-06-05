@@ -60,6 +60,13 @@ class TimelineEntry:
     upload_id: int
 
 
+@dataclass
+class StreetCommunityMapping:
+    id: int | None
+    street_name: str
+    community_name: str
+
+
 class EventLogStore(ABC):
     @abstractmethod
     def initialize(self) -> None:
@@ -115,4 +122,24 @@ class EventLogStore(ABC):
 
     @abstractmethod
     def get_permit_status_at_date(self, record_number: str, date: str) -> str | None:
+        ...
+
+    @abstractmethod
+    def get_street_community_map(self) -> dict[str, list[str]]:
+        ...
+
+    @abstractmethod
+    def upsert_street_community(self, street_name: str, community_name: str) -> None:
+        ...
+
+    @abstractmethod
+    def replace_all_street_communities(self, mappings: list[tuple[str, str]]) -> None:
+        ...
+
+    @abstractmethod
+    def list_street_communities(self) -> list[StreetCommunityMapping]:
+        ...
+
+    @abstractmethod
+    def delete_street_community(self, mapping_id: int) -> None:
         ...

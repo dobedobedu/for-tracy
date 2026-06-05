@@ -1,1 +1,9 @@
 .vercel
+__pycache__
+*.pyc
+*.pyo
+.venv
+.DS_Store
+*.db
+.uv
+_uv

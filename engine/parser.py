@@ -40,12 +40,12 @@ def parse_date(date_str: str) -> str:
 STREET_TYPES = {
     "st", "street", "rd", "road", "ave", "avenue", "ln", "lane", "loop", "cir", "circle",
     "way", "dr", "drive", "blvd", "boulevard", "ct", "court", "pl", "place", "trail",
-    "path", "pkwy", "parkway", "hwy", "highway", "ter", "terrace",
+    "trl", "path", "pkwy", "parkway", "hwy", "highway", "ter", "terrace", "row", "run",
 }
 
 
 def extract_community(address: str) -> str:
-    """Extract the community/neighborhood name from a street address.
+    """Extract the street name portion from a street address (heuristic only).
 
     Takes the street name portion (everything between house number and street type).
     Examples:
@@ -73,6 +73,26 @@ def extract_community(address: str) -> str:
     return " ".join(words)
 
 
+def resolve_community(
+    address: str,
+    street_community_map: dict[str, list[str]] | None = None,
+) -> str:
+    """Resolve the community for an address using the street→community mapping.
+
+    The map keys are UPPERCASE street-name-portions (e.g. "ANTHIRIUM", "BLUE MIST").
+    A street may map to multiple communities (joined with " | ").
+
+    Falls back to the heuristic ``extract_community()`` for streets not in the map.
+    """
+    raw = extract_community(address)
+    if street_community_map:
+        key = raw.strip().upper()
+        communities = street_community_map.get(key)
+        if communities:
+            return " | ".join(communities)
+    return raw
+
+
 def parse_address(project_name: str) -> tuple[str, str]:
     project_name = project_name.strip()
     if project_name.endswith(" :"):
@@ -85,7 +105,10 @@ def parse_address(project_name: str) -> tuple[str, str]:
     return address, city_state_zip
 
 
-def parse_row(row: pd.Series) -> ParsedRow:
+def parse_row(
+    row: pd.Series,
+    street_community_map: dict[str, list[str]] | None = None,
+) -> ParsedRow:
     date_original = str(row.get("Date", "")).strip()
     date_iso = parse_date(date_original)
     record_number = str(row.get("Record Number", "")).strip()
@@ -100,7 +123,7 @@ def parse_row(row: pd.Series) -> ParsedRow:
         description = ""
 
     address, city_state_zip = parse_address(project_name)
-    community = extract_community(address)
+    community = resolve_community(address, street_community_map)
     milestone = get_milestone(status)
     is_unrecognized = milestone == Milestone.UNRECOGNIZED and status != ""
 
@@ -151,7 +174,11 @@ def apply_scope_filter(df: pd.DataFrame, scope: ScopeFilter) -> tuple[pd.DataFra
     return df.reset_index(drop=True), dropped
 
 
-def parse_csv(df: pd.DataFrame, scope: ScopeFilter | None = None) -> tuple[list[ParsedRow], int]:
+def parse_csv(
+    df: pd.DataFrame,
+    scope: ScopeFilter | None = None,
+    street_community_map: dict[str, list[str]] | None = None,
+) -> tuple[list[ParsedRow], int]:
     if scope:
         df, dropped = apply_scope_filter(df, scope)
     else:
@@ -159,7 +186,7 @@ def parse_csv(df: pd.DataFrame, scope: ScopeFilter | None = None) -> tuple[list[
 
     rows = []
     for _, row in df.iterrows():
-        parsed = parse_row(row)
+        parsed = parse_row(row, street_community_map)
         if parsed.record_number:
             rows.append(parsed)
 
