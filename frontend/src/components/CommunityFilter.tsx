@@ -27,12 +27,16 @@ export function CommunityFilter({
   selected,
   onToggle,
   onClear,
+  onSelectAllLwr,
+  lwrCommunityNames,
 }: {
   fromDate?: string;
   toDate?: string;
   selected: string[];
   onToggle: (community: string) => void;
   onClear: () => void;
+  onSelectAllLwr: () => void;
+  lwrCommunityNames: string[];
 }) {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [search, setSearch] = useState("");
@@ -88,6 +92,11 @@ export function CommunityFilter({
     ? communities.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     : [];
 
+  // In the modal, show all communities sorted alphabetically, filtered by search
+  const modalCommunities = [...communities]
+    .filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="space-y-3">
       {/* Search bar */}
@@ -123,6 +132,22 @@ export function CommunityFilter({
           onClick={onClear}
         >
           All
+        </Badge>
+
+        {/* All Lakewood Ranch badge */}
+        <Badge
+          variant={
+            lwrCommunityNames.length > 0 &&
+            lwrCommunityNames.every((c) => selected.includes(c)) &&
+            selected.length === lwrCommunityNames.length
+              ? "default"
+              : "outline"
+          }
+          className="cursor-pointer text-xs"
+          onClick={onSelectAllLwr}
+          title="Select all Lakewood Ranch communities"
+        >
+          All Lakewood Ranch
         </Badge>
 
         {/* Visible community chips with pin handles */}
@@ -185,9 +210,9 @@ export function CommunityFilter({
         )}
       </div>
 
-      {/* All Communities Modal with pin/unpin */}
+      {/* All Communities Modal with tile grid */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-lg max-h-[70vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-sm flex justify-between items-center">
               <span>All Communities ({communities.length})</span>
@@ -197,52 +222,82 @@ export function CommunityFilter({
             </DialogTitle>
           </DialogHeader>
 
-          <Input
-            placeholder="Filter communities..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="text-sm mb-3"
-          />
+          <div className="flex items-center gap-2 mb-3">
+            <Input
+              placeholder="Filter communities..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="text-sm flex-1"
+            />
+            <button
+              onClick={() => {
+                onSelectAllLwr();
+                setModalOpen(false);
+              }}
+              className="text-xs px-3 py-2 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium transition-colors whitespace-nowrap"
+              title="Select all Lakewood Ranch communities and close"
+            >
+              All Lakewood Ranch
+            </button>
+            <button
+              onClick={() => {
+                onClear();
+                setModalOpen(false);
+              }}
+              className="text-xs px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 text-gray-600 font-medium transition-colors whitespace-nowrap"
+              title="Clear all filters and close"
+            >
+              Clear
+            </button>
+          </div>
 
           <div className="overflow-y-auto flex-1 pr-1">
-            <div className="grid grid-cols-1 gap-0.5">
-              {[...communities]
-                .filter((c) => !search || c.name.toLowerCase().includes(search.toLowerCase()))
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((c) => (
-                  <div
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {modalCommunities.map((c) => {
+                const isSelected = selected.includes(c.name);
+                const pinnedHere = isPinned(c.name);
+                return (
+                  <button
                     key={c.name}
-                    className={`flex items-center justify-between px-3 py-2 rounded text-xs transition-colors ${
-                      selected.includes(c.name)
-                        ? "bg-blue-50 text-blue-700"
-                        : "hover:bg-gray-50 text-gray-700"
+                    onClick={() => onToggle(c.name)}
+                    className={`relative text-left rounded-md border px-3 py-2.5 text-xs transition-all min-h-[58px] ${
+                      isSelected
+                        ? "bg-blue-50 border-blue-400 text-blue-800 ring-1 ring-blue-300"
+                        : "bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 text-gray-700"
                     }`}
                   >
-                    <button
-                      className="flex-1 text-left font-medium inline-flex items-center gap-1.5"
-                      onClick={() => onToggle(c.name)}
-                    >
+                    <div className="flex items-start justify-between gap-1">
+                      <span className="font-medium leading-tight line-clamp-2 break-words">
+                        {c.name}
+                      </span>
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
                           togglePin(c.name);
                         }}
-                        className={`select-none transition-colors cursor-pointer ${
-                          isPinned(c.name) ? "text-blue-500" : "text-gray-300 hover:text-blue-400"
+                        className={`select-none cursor-pointer flex-shrink-0 transition-colors ${
+                          pinnedHere ? "text-blue-500" : "text-gray-300 hover:text-blue-400"
                         }`}
-                        title={isPinned(c.name) ? "Unpin" : "Pin"}
+                        title={pinnedHere ? "Unpin" : "Pin"}
                       >
                         ⋮⋮
                       </span>
-                      {c.name}
-                      <span className="text-gray-400 font-normal">{c.count}</span>
-                      {selected.includes(c.name) && (
-                        <span className="ml-auto text-blue-600 font-bold">✓</span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[10px] text-gray-400">{c.count} permits</span>
+                      {isSelected && (
+                        <span className="text-blue-600 font-bold text-sm leading-none">✓</span>
                       )}
-                    </button>
-                  </div>
-                ))}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+            {modalCommunities.length === 0 && (
+              <div className="text-center text-xs text-gray-400 py-8">
+                No communities match "{search}"
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

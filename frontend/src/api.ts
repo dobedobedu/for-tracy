@@ -105,3 +105,9 @@ export async function getTimeline(recordNumber: string): Promise<any[]> {
   const data = await res.json();
   return data.timeline;
 }
+
+export async function getStreetMappings(): Promise<{ id: number; street_name: string; community_name: string }[]> {
+  const res = await fetch(`${API_BASE}/streets`);
+  const data = await res.json();
+  return data.mappings;
+}

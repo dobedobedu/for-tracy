@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { UploadZone } from "@/components/UploadZone";
 import { ReportSelector } from "@/components/ReportSelector";
 import { TransitionSummary } from "@/components/TransitionSummary";
 import { CommunityFilter } from "@/components/CommunityFilter";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { getUploads, getCompare, getKanban, type Upload, type CompareResult } from "@/api";
+import { getUploads, getCompare, getKanban, getStreetMappings, type Upload, type CompareResult } from "@/api";
 
 export default function App() {
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -16,11 +16,16 @@ export default function App() {
   const [legendFilter, setLegendFilter] = useState<"changed" | "tracked" | "backward" | null>(null);
   const [kanbanData, setKanbanData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [streetMappings, setStreetMappings] = useState<{ id: number; street_name: string; community_name: string }[]>([]);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     getUploads().then(setUploads);
+  }, [refreshKey]);
+
+  useEffect(() => {
+    getStreetMappings().then(setStreetMappings);
   }, [refreshKey]);
 
   useEffect(() => {
@@ -41,6 +46,13 @@ export default function App() {
     getKanban(selectedCommunities.length > 0 ? selectedCommunities : undefined, toDate || undefined).then(setKanbanData);
   }, [selectedCommunities, toDate, refreshKey]);
 
+  // Distinct LWR community names (from street_community mapping)
+  const lwrCommunityNames = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of streetMappings) set.add(m.community_name);
+    return Array.from(set).sort();
+  }, [streetMappings]);
+
   const handleUpload = () => {
     refresh();
   };
@@ -52,7 +64,6 @@ export default function App() {
   };
 
   const handleSelectTransition = (from: string, to: string) => {
-    // Deselect when empty strings are passed (toggle off)
     if (!from && !to) {
       setSelectedTransition(null);
     } else {
@@ -64,6 +75,17 @@ export default function App() {
     setSelectedCommunities((prev) =>
       prev.includes(community) ? prev.filter((c) => c !== community) : [...prev, community]
     );
+  };
+
+  const handleSelectAllLwr = () => {
+    // If everything LWR is already selected, toggle off; otherwise select all
+    const allSelected = lwrCommunityNames.length > 0 &&
+      lwrCommunityNames.every((c) => selectedCommunities.includes(c));
+    if (allSelected) {
+      setSelectedCommunities([]);
+    } else {
+      setSelectedCommunities([...lwrCommunityNames]);
+    }
   };
 
   const handleLegendFilter = (filter: "changed" | "tracked" | "backward" | null) => {
@@ -122,6 +144,8 @@ export default function App() {
               selected={selectedCommunities}
               onToggle={handleToggleCommunity}
               onClear={() => setSelectedCommunities([])}
+              onSelectAllLwr={handleSelectAllLwr}
+              lwrCommunityNames={lwrCommunityNames}
             />
           </section>
         )}

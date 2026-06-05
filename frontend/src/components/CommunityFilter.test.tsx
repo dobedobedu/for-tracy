@@ -22,7 +22,15 @@ describe('CommunityFilter', () => {
   })
 
   it('shows top 5 communities by default as chips', async () => {
-    render(<CommunityFilter selected={[]} onToggle={vi.fn()} onClear={vi.fn()} />)
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={[]}
+      />
+    )
 
     expect(await screen.findByText('All')).toBeInTheDocument()
     expect(await screen.findByText('BLUE SHELL (109)')).toBeInTheDocument()
@@ -34,13 +42,29 @@ describe('CommunityFilter', () => {
   })
 
   it('shows +N more button for hidden communities', async () => {
-    render(<CommunityFilter selected={[]} onToggle={vi.fn()} onClear={vi.fn()} />)
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={[]}
+      />
+    )
 
     expect(await screen.findByText('+2 more')).toBeInTheDocument()
   })
 
   it('pins a community via vertical dots and it persists', async () => {
-    render(<CommunityFilter selected={[]} onToggle={vi.fn()} onClear={vi.fn()} />)
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={[]}
+      />
+    )
     await screen.findByText('BLUE SHELL (109)')
 
     const blueShellChip = screen.getByText('BLUE SHELL (109)')
@@ -54,7 +78,15 @@ describe('CommunityFilter', () => {
 
   it('unpins a community via vertical dots and it disappears from chips', async () => {
     localStorage.setItem('fortracy_pinned_communities', JSON.stringify(['BLUE SHELL']))
-    render(<CommunityFilter selected={[]} onToggle={vi.fn()} onClear={vi.fn()} />)
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={[]}
+      />
+    )
     await screen.findByText('BLUE SHELL (109)')
 
     const blueShellChip = screen.getByText('BLUE SHELL (109)')
@@ -69,7 +101,15 @@ describe('CommunityFilter', () => {
 
   it('multi-selects communities', async () => {
     const onToggle = vi.fn()
-    render(<CommunityFilter selected={[]} onToggle={onToggle} onClear={vi.fn()} />)
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={onToggle}
+        onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={[]}
+      />
+    )
     const chip = await screen.findByText('BLUE SHELL (109)')
 
     fireEvent.click(chip)
@@ -82,11 +122,68 @@ describe('CommunityFilter', () => {
         selected={['BLUE SHELL', 'ANTHIRIUM']}
         onToggle={vi.fn()}
         onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={[]}
       />
     )
     await screen.findByText('BLUE SHELL (109)')
 
     expect(screen.getByText('BLUE SHELL ×')).toBeInTheDocument()
     expect(screen.getByText('ANTHIRIUM ×')).toBeInTheDocument()
+  })
+
+  it('shows All Lakewood Ranch chip next to All', async () => {
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={['BLUE SHELL', 'ANTHIRIUM']}
+      />
+    )
+    expect(await screen.findByText('All Lakewood Ranch')).toBeInTheDocument()
+  })
+
+  it('All Lakewood Ranch chip calls onSelectAllLwr with the mapped names', async () => {
+    const onSelectAllLwr = vi.fn()
+    const lwr = ['BLUE SHELL', 'ANTHIRIUM', 'WATERFRONT']
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        onSelectAllLwr={onSelectAllLwr}
+        lwrCommunityNames={lwr}
+      />
+    )
+    const chip = await screen.findByText('All Lakewood Ranch')
+    fireEvent.click(chip)
+    // The chip itself is a toggle; the App-level handler should call setSelectedCommunities
+    expect(onSelectAllLwr).toHaveBeenCalled()
+  })
+
+  it('modal opens and shows tile grid with all communities', async () => {
+    render(
+      <CommunityFilter
+        selected={[]}
+        onToggle={vi.fn()}
+        onClear={vi.fn()}
+        onSelectAllLwr={vi.fn()}
+        lwrCommunityNames={[]}
+      />
+    )
+    const moreBtn = await screen.findByText('+2 more')
+    fireEvent.click(moreBtn)
+
+    // All communities should now be visible in the modal as tiles.
+    // Tiles show the name and "N permits" on separate lines.
+    await waitFor(() => {
+      expect(screen.getByText('MAGNOLIA')).toBeInTheDocument()
+    })
+    expect(screen.getByText('ORCHID')).toBeInTheDocument()
+    // Counts appear in the modal as "N permits"
+    expect(screen.getByText('21 permits')).toBeInTheDocument()
+    expect(screen.getByText('12 permits')).toBeInTheDocument()
   })
 })
