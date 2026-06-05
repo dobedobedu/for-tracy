@@ -142,7 +142,8 @@ describe('CommunityFilter', () => {
         lwrCommunityNames={['BLUE SHELL', 'ANTHIRIUM']}
       />
     )
-    expect(await screen.findByText('All Lakewood Ranch')).toBeInTheDocument()
+    expect(await screen.findByTestId('all-lakewood-ranch-chip')).toBeInTheDocument()
+    expect(screen.getByText('All Lakewood Ranch (2)')).toBeInTheDocument()
   })
 
   it('All Lakewood Ranch chip calls onSelectAllLwr with the mapped names', async () => {
@@ -157,7 +158,7 @@ describe('CommunityFilter', () => {
         lwrCommunityNames={lwr}
       />
     )
-    const chip = await screen.findByText('All Lakewood Ranch')
+    const chip = await screen.findByTestId('all-lakewood-ranch-chip')
     fireEvent.click(chip)
     // The chip itself is a toggle; the App-level handler should call setSelectedCommunities
     expect(onSelectAllLwr).toHaveBeenCalled()

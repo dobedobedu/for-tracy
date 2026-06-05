@@ -134,21 +134,24 @@ export function CommunityFilter({
           All
         </Badge>
 
-        {/* All Lakewood Ranch badge */}
-        <Badge
-          variant={
+        {/* All Lakewood Ranch button - uses regular <button> for reliable click handling */}
+        <button
+          type="button"
+          data-testid="all-lakewood-ranch-chip"
+          onClick={() => {
+            onSelectAllLwr();
+          }}
+          title="Select all 13 Lakewood Ranch communities"
+          className={`inline-flex items-center justify-center h-7 px-3 rounded-2xl border text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
             lwrCommunityNames.length > 0 &&
             lwrCommunityNames.every((c) => selected.includes(c)) &&
             selected.length === lwrCommunityNames.length
-              ? "default"
-              : "outline"
-          }
-          className="cursor-pointer text-xs"
-          onClick={onSelectAllLwr}
-          title="Select all Lakewood Ranch communities"
+              ? "bg-primary text-primary-foreground border-transparent"
+              : "border-border text-foreground hover:bg-muted"
+          }`}
         >
-          All Lakewood Ranch
-        </Badge>
+          All Lakewood Ranch ({lwrCommunityNames.length})
+        </button>
 
         {/* Visible community chips with pin handles */}
         {visibleCommunities.map((c) => (
