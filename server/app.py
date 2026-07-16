@@ -380,20 +380,21 @@ async def get_communities(only_changed: bool = Query(False), from_date: str = Qu
     for p in permits:
         if only_changed and p.record_number not in changed_record_numbers:
             continue
-        comm = p.community or "Unknown"
-        if comm not in communities:
-            communities[comm] = {
-                "name": comm,
-                "count": 0,
-                "permits": [],
-            }
-        communities[comm]["count"] += 1
-        communities[comm]["permits"].append({
-            "record_number": p.record_number,
-            "address": p.address,
-            "current_status": p.current_status,
-            "current_milestone": p.current_milestone,
-        })
+        comms = [c.strip() for c in (p.community or "Unknown").split("|") if c.strip()]
+        for comm in comms:
+            if comm not in communities:
+                communities[comm] = {
+                    "name": comm,
+                    "count": 0,
+                    "permits": [],
+                }
+            communities[comm]["count"] += 1
+            communities[comm]["permits"].append({
+                "record_number": p.record_number,
+                "address": p.address,
+                "current_status": p.current_status,
+                "current_milestone": p.current_milestone,
+            })
 
     sorted_communities = sorted(
         communities.values(),
