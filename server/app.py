@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from engine.orchestrator import ingest_csv, IngestionResult
+from engine.orchestrator import ingest_csv, IngestionResult, update_all_permit_communities
 from engine.parser import ScopeFilter
 from engine.status import MILESTONE_ORDER, Milestone
 from engine.comparison import compare_reports
@@ -45,6 +45,7 @@ def get_store() -> EventLogStore:
 @app.on_event("startup")
 async def startup():
     get_store().initialize()
+    update_all_permit_communities(get_store())
 
 
 @app.post("/api/upload")
@@ -276,13 +277,12 @@ async def export_changes(upload_id: int | None = Query(None)):
     writer.writerow([
         "Record Number", "From Status", "To Status",
         "From Milestone", "To Milestone", "Change Date",
-        "Tracked Milestone", "Backward Move",
+        "Backward Move",
     ])
     for c in changes:
         writer.writerow([
             c.record_number, c.from_status, c.to_status,
             c.from_milestone, c.to_milestone, c.change_date,
-            "Yes" if c.is_tracked_milestone else "No",
             "Yes" if c.is_backward else "No",
         ])
 
@@ -311,6 +311,17 @@ async def get_uploads():
             for u in uploads
         ]
     }
+
+
+@app.delete("/api/uploads/{upload_id}")
+async def delete_upload(upload_id: int):
+    s = get_store()
+    try:
+        s.delete_upload(upload_id)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 @app.get("/api/disappeared")
@@ -443,6 +454,7 @@ async def upsert_street(payload: dict = Body(...)):
         raise HTTPException(status_code=400, detail="street_name and community_name required")
     s = get_store()
     s.upsert_street_community(street_name, community_name)
+    update_all_permit_communities(s)
     return {"ok": True, "street_name": street_name, "community_name": community_name}
 
 
@@ -460,6 +472,7 @@ async def bulk_replace_streets(payload: dict = Body(...)):
             cleaned.append((street, community))
     s = get_store()
     s.replace_all_street_communities(cleaned)
+    update_all_permit_communities(s)
     return {"ok": True, "count": len(cleaned)}
 
 
@@ -467,4 +480,5 @@ async def bulk_replace_streets(payload: dict = Body(...)):
 async def delete_street(mapping_id: int):
     s = get_store()
     s.delete_street_community(mapping_id)
+    update_all_permit_communities(s)
     return {"ok": True}

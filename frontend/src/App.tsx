@@ -4,7 +4,7 @@ import { ReportSelector } from "@/components/ReportSelector";
 import { TransitionSummary } from "@/components/TransitionSummary";
 import { CommunityFilter } from "@/components/CommunityFilter";
 import { KanbanBoard } from "@/components/KanbanBoard";
-import { getUploads, getCompare, getKanban, getStreetMappings, type Upload, type CompareResult } from "@/api";
+import { getUploads, getCompare, getKanban, getStreetMappings, deleteUpload, type Upload, type CompareResult } from "@/api";
 
 export default function App() {
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -13,12 +13,24 @@ export default function App() {
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [selectedTransition, setSelectedTransition] = useState<{ from: string; to: string } | null>(null);
   const [selectedCommunities, setSelectedCommunities] = useState<string[]>([]);
-  const [legendFilter, setLegendFilter] = useState<"changed" | "tracked" | "backward" | null>(null);
+  const [legendFilter, setLegendFilter] = useState<"changed" | "backward" | null>(null);
   const [kanbanData, setKanbanData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [streetMappings, setStreetMappings] = useState<{ id: number; street_name: string; community_name: string }[]>([]);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const handleDeleteUpload = useCallback(async (id: number) => {
+    try {
+      await deleteUpload(id);
+      refresh();
+      setFromDate(null);
+      setToDate(null);
+      setCompareResult(null);
+    } catch (err) {
+      alert("Failed to delete upload: " + err);
+    }
+  }, [refresh]);
 
   useEffect(() => {
     getUploads().then(setUploads);
@@ -88,7 +100,7 @@ export default function App() {
     }
   };
 
-  const handleLegendFilter = (filter: "changed" | "tracked" | "backward" | null) => {
+  const handleLegendFilter = (filter: "changed" | "backward" | null) => {
     setLegendFilter((prev) => (prev === filter ? null : filter));
   };
 
@@ -110,6 +122,7 @@ export default function App() {
             fromDate={fromDate}
             toDate={toDate}
             onSelect={handleSelectReports}
+            onDelete={handleDeleteUpload}
           />
         </div>
 

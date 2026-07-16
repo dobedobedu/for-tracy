@@ -48,19 +48,9 @@ MILESTONE_ORDER: list[Milestone] = [
 
 MILESTONE_RANK: dict[Milestone, int] = {m: i for i, m in enumerate(MILESTONE_ORDER)}
 
-TRACKED_TRANSITIONS: dict[str, Milestone] = {
-    "permit_issued": Milestone.PERMIT_ISSUED,
-    "co_pending": Milestone.PENDING_CO,
-    "co_issued": Milestone.CLOSED,  # Now maps to Closed instead of CO Issued / Complete
-}
-
-
 def get_milestone(status: str) -> Milestone:
     return STATUS_TO_MILESTONE.get(status, Milestone.UNRECOGNIZED)
 
-
-def is_tracked_transition(to_milestone: Milestone) -> bool:
-    return to_milestone in TRACKED_TRANSITIONS.values()
 
 
 def is_backward_move(from_milestone: Milestone, to_milestone: Milestone) -> bool:

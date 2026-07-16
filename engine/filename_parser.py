@@ -29,5 +29,13 @@ def parse_report_date_from_filename(filename: str) -> str:
         month, day, year = match.groups()
         return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
     
+    # Try YYYYMMDD anywhere in the filename
+    match = re.search(r'(\d{4})(\d{2})(\d{2})', name)
+    if match:
+        year, month, day = match.groups()
+        y, m, d = int(year), int(month), int(day)
+        if 2000 <= y <= 2100 and 1 <= m <= 12 and 1 <= d <= 31:
+            return f"{y:04d}-{m:02d}-{d:02d}"
+            
     # Fallback to today
     return datetime.now().strftime("%Y-%m-%d")

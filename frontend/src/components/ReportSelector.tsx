@@ -10,11 +10,13 @@ export function ReportSelector({
   fromDate,
   toDate,
   onSelect,
+  onDelete,
 }: {
   uploads: Upload[];
   fromDate: string | null;
   toDate: string | null;
   onSelect: (from: string, to: string) => void;
+  onDelete?: (id: number) => void;
 }) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
 
@@ -151,6 +153,7 @@ export function ReportSelector({
                     <TableHead className="text-xs">Date</TableHead>
                     <TableHead className="text-xs">Filename</TableHead>
                     <TableHead className="text-xs text-right">Permits</TableHead>
+                    <TableHead className="text-xs w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -175,6 +178,23 @@ export function ReportSelector({
                       <TableCell className="text-xs font-medium whitespace-nowrap pr-4">{u.report_date}</TableCell>
                       <TableCell className="text-xs truncate max-w-[260px] pr-4">{u.filename}</TableCell>
                       <TableCell className="text-xs text-right whitespace-nowrap">{u.row_count_after_scope.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        {onDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`Are you sure you want to delete report "${u.filename}"? This will remove all its observations and status changes.`)) {
+                                onDelete(u.id);
+                              }
+                            }}
+                          >
+                            ✕
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

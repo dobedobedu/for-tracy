@@ -48,7 +48,13 @@ def ingest_csv(
         scope = ScopeFilter()
 
     street_community_map = store.get_street_community_map()
-    parsed_rows, dropped = parse_csv(df, scope, street_community_map)
+    from engine.parser import extract_community
+    normalized_map = {}
+    for street_name, communities in street_community_map.items():
+        key = extract_community(street_name).strip().upper()
+        if key:
+            normalized_map.setdefault(key, []).extend(communities)
+    parsed_rows, dropped = parse_csv(df, scope, normalized_map)
     row_count_after_scope = len(parsed_rows)
 
     report_date = parse_report_date_from_filename(filename)
@@ -75,7 +81,7 @@ def ingest_csv(
             address=np.address,
             city_state_zip=np.city_state_zip,
             first_seen_date=np.observed_date,
-            last_seen_date=np.observed_date,
+            last_seen_date=report_date,
             current_status=np.status,
             current_milestone=np.milestone.value,
             community=np.community,
@@ -86,7 +92,7 @@ def ingest_csv(
             record_number=np.record_number,
             status=np.status,
             milestone=np.milestone.value,
-            observed_date=np.observed_date,
+            observed_date=report_date,
             upload_id=upload_id,
         ))
 
@@ -99,13 +105,13 @@ def ingest_csv(
             from_milestone=sc.from_milestone.value,
             to_milestone=sc.to_milestone.value,
             detected_on_upload_id=upload_id,
-            change_date=sc.change_date,
+            change_date=report_date,
             is_tracked_milestone=sc.is_tracked_milestone,
             is_backward=sc.is_backward,
         ))
         row = next(r for r in parsed_rows if r.record_number == sc.record_number)
         prior_rec = prior_records.get(sc.record_number)
-        first_seen = prior_rec.first_seen_date if prior_rec else sc.change_date
+        first_seen = prior_rec.first_seen_date if prior_rec else row.date
         store.upsert_permit(PermitRecord(
             record_number=sc.record_number,
             record_type=row.record_type,
@@ -113,7 +119,7 @@ def ingest_csv(
             address=row.address,
             city_state_zip=row.city_state_zip,
             first_seen_date=first_seen,
-            last_seen_date=sc.change_date,
+            last_seen_date=report_date,
             current_status=sc.to_status,
             current_milestone=sc.to_milestone.value,
             community=row.community,
@@ -123,7 +129,7 @@ def ingest_csv(
             record_number=sc.record_number,
             status=sc.to_status,
             milestone=sc.to_milestone.value,
-            observed_date=sc.change_date,
+            observed_date=report_date,
             upload_id=upload_id,
         ))
 
@@ -137,7 +143,7 @@ def ingest_csv(
             address=row.address,
             city_state_zip=row.city_state_zip,
             first_seen_date=prior_rec.first_seen_date,
-            last_seen_date=row.date,
+            last_seen_date=report_date,
             current_status=row.status,
             current_milestone=row.milestone.value,
             community=row.community,
@@ -147,7 +153,7 @@ def ingest_csv(
             record_number=rn,
             status=row.status,
             milestone=row.milestone.value,
-            observed_date=row.date,
+            observed_date=report_date,
             upload_id=upload_id,
         ))
 
@@ -171,3 +177,23 @@ def ingest_csv(
         observation_count=diff.observation_count,
         new_permit_records=new_permit_tuples,
     )
+
+
+def update_all_permit_communities(store: EventLogStore) -> None:
+    from engine.parser import extract_community
+    street_community_map = store.get_street_community_map()
+    normalized_map = {}
+    for street_name, communities in street_community_map.items():
+        key = extract_community(street_name).strip().upper()
+        if key:
+            normalized_map.setdefault(key, []).extend(communities)
+
+    permits = store.get_all_permits()
+    for p in permits:
+        raw = extract_community(p.address)
+        key = raw.strip().upper()
+        communities = normalized_map.get(key)
+        new_community = " | ".join(communities) if communities else raw
+        if new_community != p.community:
+            p.community = new_community
+            store.upsert_permit(p)

@@ -6,7 +6,7 @@ import pytest
 import pandas as pd
 
 from engine.parser import parse_date, parse_address, parse_row, parse_csv, ScopeFilter
-from engine.status import get_milestone, Milestone, is_backward_move, is_tracked_transition, STATUS_TO_MILESTONE
+from engine.status import get_milestone, Milestone, is_backward_move, STATUS_TO_MILESTONE
 from engine.diff import detect_changes
 from engine.orchestrator import ingest_csv
 from engine.mock_data import generate_mock_data, snapshot_to_csv
@@ -227,53 +227,7 @@ class TestDisappearedPermitFlaggedNotDeleted:
         assert "RES-NEW-26-000002" in permits
 
 
-class TestTrackedMilestoneTransitionsFlagged:
-    def test_permit_issued(self):
-        store = SQLiteStore()
-        store.initialize()
-        scope = ScopeFilter(zip_codes=["34240"])
 
-        csv1 = "Date,Record Number,Record Type,Description,Project Name,Status,Short Notes\n"
-        csv1 += '2/1/2026,RES-NEW-26-000001,Residential New Construction Permit,Test,"100 MAIN ST, Sarasota, FL 34240 :",Ready to Issue,\n'
-        ingest_csv(csv1, "snap1.csv", store, scope)
-
-        csv2 = "Date,Record Number,Record Type,Description,Project Name,Status,Short Notes\n"
-        csv2 += '3/1/2026,RES-NEW-26-000001,Residential New Construction Permit,Test,"100 MAIN ST, Sarasota, FL 34240 :",Inspection Phase,\n'
-        result = ingest_csv(csv2, "snap2.csv", store, scope)
-
-        assert result.tracked_milestone_hits == 1
-        changes = store.get_latest_changes(result.upload_id)
-        assert changes[0].is_tracked_milestone is True
-
-    def test_co_pending(self):
-        store = SQLiteStore()
-        store.initialize()
-        scope = ScopeFilter(zip_codes=["34240"])
-
-        csv1 = "Date,Record Number,Record Type,Description,Project Name,Status,Short Notes\n"
-        csv1 += '2/1/2026,RES-NEW-26-000001,Residential New Construction Permit,Test,"100 MAIN ST, Sarasota, FL 34240 :",Inspection Phase,\n'
-        ingest_csv(csv1, "snap1.csv", store, scope)
-
-        csv2 = "Date,Record Number,Record Type,Description,Project Name,Status,Short Notes\n"
-        csv2 += '3/1/2026,RES-NEW-26-000001,Residential New Construction Permit,Test,"100 MAIN ST, Sarasota, FL 34240 :",Pending CO,\n'
-        result = ingest_csv(csv2, "snap2.csv", store, scope)
-
-        assert result.tracked_milestone_hits == 1
-
-    def test_co_issued(self):
-        store = SQLiteStore()
-        store.initialize()
-        scope = ScopeFilter(zip_codes=["34240"])
-
-        csv1 = "Date,Record Number,Record Type,Description,Project Name,Status,Short Notes\n"
-        csv1 += '2/1/2026,RES-NEW-26-000001,Residential New Construction Permit,Test,"100 MAIN ST, Sarasota, FL 34240 :",Pending CO,\n'
-        ingest_csv(csv1, "snap1.csv", store, scope)
-
-        csv2 = "Date,Record Number,Record Type,Description,Project Name,Status,Short Notes\n"
-        csv2 += '3/1/2026,RES-NEW-26-000001,Residential New Construction Permit,Test,"100 MAIN ST, Sarasota, FL 34240 :",Closed - Complete,\n'
-        result = ingest_csv(csv2, "snap2.csv", store, scope)
-
-        assert result.tracked_milestone_hits == 1
 
 
 class TestObservationCountInvariant:

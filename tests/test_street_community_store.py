@@ -59,3 +59,32 @@ def test_replace_all_street_communities(store):
     ])
     m = store.get_street_community_map()
     assert m == {"NEW STREET 1": ["New Community A"], "NEW STREET 2": ["New Community B"]}
+
+
+def test_update_all_permit_communities(store):
+    from store.interface import PermitRecord
+    from engine.orchestrator import update_all_permit_communities
+    
+    p = PermitRecord(
+        record_number="RES-NEW-26-000883",
+        record_type="Residential New Construction Permit",
+        description="NEW SFR",
+        address="8520 ANTHIRIUM Loop",
+        city_state_zip="Sarasota, FL 34240",
+        first_seen_date="2026-06-02",
+        last_seen_date="2026-06-17",
+        current_status="Plan Review",
+        current_milestone="Application / Review",
+        community="ANTHIRIUM"
+    )
+    store.upsert_permit(p)
+    
+    store.upsert_street_community("Anthirium Loop", "Windward")
+    
+    saved = store.get_all_permits()[0]
+    assert saved.community == "ANTHIRIUM"
+    
+    update_all_permit_communities(store)
+    
+    saved = store.get_all_permits()[0]
+    assert saved.community == "Windward"

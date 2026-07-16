@@ -60,9 +60,6 @@ class TestSmokeRealData:
         changes = store.get_latest_changes(r2.upload_id)
         assert len(changes) == r2.status_changes
 
-        tracked = [c for c in changes if c.is_tracked_milestone]
-        assert len(tracked) > 0
-
         permits = store.get_current_statuses()
         assert len(permits) > r1.new_permits
 

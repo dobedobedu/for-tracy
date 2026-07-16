@@ -214,8 +214,7 @@ def _make_row(permit: MockPermit, status: str, report_date: str, add_noise: bool
 
 
 def _is_tracked(status: str) -> bool:
-    ms = STATUS_TO_MILESTONE.get(status, Milestone.UNRECOGNIZED)
-    return ms in (Milestone.PERMIT_ISSUED, Milestone.PENDING_CO, Milestone.CLOSED)
+    return False
 
 
 def snapshot_to_csv(snapshot: MockSnapshot) -> str:

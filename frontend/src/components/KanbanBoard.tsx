@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { getTimeline } from "@/api";
 
 const ALL_LANES = [
   "Application / Review",
@@ -74,10 +75,12 @@ export function KanbanBoard({
     closed_sub_statuses?: Record<string, number>;
   };
   selectedTransition: { from: string; to: string } | null;
-  legendFilter: "changed" | "tracked" | "backward" | null;
-  onLegendFilter: (filter: "changed" | "tracked" | "backward" | null) => void;
+  legendFilter: "changed" | "backward" | null;
+  onLegendFilter: (filter: "changed" | "backward" | null) => void;
 }) {
   const [dialogPermit, setDialogPermit] = useState<string | null>(null);
+  const [timelineData, setTimelineData] = useState<any | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [visibleLanes, setVisibleLanes] = useState<string[]>(DEFAULT_VISIBLE_LANES);
   const [expandedLane, setExpandedLane] = useState<string | null>(null);
   const [showLaneEditor, setShowLaneEditor] = useState(false);
@@ -85,6 +88,23 @@ export function KanbanBoard({
 
   const columns = data.columns || [];
   const closedSubStatuses = data.closed_sub_statuses || {};
+
+  useEffect(() => {
+    if (dialogPermit) {
+      setTimelineLoading(true);
+      getTimeline(dialogPermit)
+        .then((data) => {
+          setTimelineData(data);
+          setTimelineLoading(false);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch timeline:", err);
+          setTimelineLoading(false);
+        });
+    } else {
+      setTimelineData(null);
+    }
+  }, [dialogPermit]);
 
   const handleShowTimeline = async (recordNumber: string) => {
     setDialogPermit(recordNumber);
@@ -122,8 +142,7 @@ export function KanbanBoard({
         permits = permits.filter((p) => {
           if (!p.changed || !p.change_info) return false;
           if (legendFilter === "backward") return p.change_info.is_backward;
-          if (legendFilter === "tracked") return p.change_info.is_tracked_milestone;
-          if (legendFilter === "changed") return !p.change_info.is_backward && !p.change_info.is_tracked_milestone;
+          if (legendFilter === "changed") return !p.change_info.is_backward;
           return false;
         });
       }
@@ -131,9 +150,8 @@ export function KanbanBoard({
       return { ...col, permits };
     });
 
-  const legendItems: { key: "changed" | "tracked" | "backward"; label: string; dotClass: string }[] = [
+  const legendItems: { key: "changed" | "backward"; label: string; dotClass: string }[] = [
     { key: "changed", label: "Changed", dotClass: "bg-blue-500" },
-    { key: "tracked", label: "Tracked milestone", dotClass: "bg-purple-500" },
     { key: "backward", label: "Backward", dotClass: "bg-red-500" },
   ];
 
@@ -241,120 +259,210 @@ export function KanbanBoard({
       </div>
 
       <div className="flex gap-3 pb-2">
-        {filteredColumns.map((col) => (
-          <Card
-            key={col.milestone}
-            className={`${
-              expandedLane === col.milestone ? "flex-[2] min-w-[320px]" : "flex-1 min-w-[180px]"
-            }`}
-          >
-            <CardHeader
-              className="p-3 pb-2 cursor-pointer select-none"
-              onClick={() =>
-                setExpandedLane(expandedLane === col.milestone ? null : col.milestone)
-              }
+        {filteredColumns.map((col) => {
+          const isExpanded = expandedLane === col.milestone;
+          return (
+            <Card
+              key={col.milestone}
+              className={`${
+                isExpanded ? "flex-[3.5] min-w-[420px]" : "flex-1 min-w-[180px]"
+              } transition-all duration-300`}
             >
-              <CardTitle className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 flex justify-between items-center">
-                <span>{LANE_DISPLAY[col.milestone] || col.milestone}</span>
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                  {col.permits.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
+              <CardHeader
+                className={`${isExpanded ? "p-4 pb-3" : "p-3 pb-2"} cursor-pointer select-none`}
+                onClick={() =>
+                  setExpandedLane(isExpanded ? null : col.milestone)
+                }
+              >
+                <CardTitle className={`${isExpanded ? "text-sm font-bold" : "text-[11px] font-semibold"} uppercase tracking-wide text-gray-500 flex justify-between items-center`}>
+                  <span>{LANE_DISPLAY[col.milestone] || col.milestone}</span>
+                  <Badge variant="secondary" className={`${isExpanded ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0"}`}>
+                    {col.permits.length}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
 
-            {/* Closed sub-status tabs */}
-            {col.milestone === "Closed" && Object.keys(closedSubStatuses).length > 0 && (
-              <div className="px-2 pb-1">
-                <div className="flex gap-0.5 border-b border-gray-100 mb-1">
-                  {CLOSED_SUBS.map((sub) => {
-                    const count = closedSubStatuses[sub] || 0;
-                    if (count === 0) return null;
-                    const isActive = closedTab === sub;
-                    const shortName = sub.replace("Closed - ", "");
-                    return (
-                      <button
-                        key={sub}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setClosedTab(isActive ? null : sub);
-                        }}
-                        className={`flex-1 text-[9px] py-1.5 px-1 text-center font-semibold uppercase tracking-wide transition-colors border-b-2 ${
-                          isActive
-                            ? "text-blue-600 border-blue-600 bg-blue-50"
-                            : "text-gray-400 border-transparent hover:text-gray-600"
+              {/* Closed sub-status tabs */}
+              {col.milestone === "Closed" && Object.keys(closedSubStatuses).length > 0 && (
+                <div className={`${isExpanded ? "px-4 pb-2" : "px-2 pb-1"}`}>
+                  <div className="flex gap-0.5 border-b border-gray-100 mb-1">
+                    {CLOSED_SUBS.map((sub) => {
+                      const count = closedSubStatuses[sub] || 0;
+                      if (count === 0) return null;
+                      const isActive = closedTab === sub;
+                      const shortName = sub.replace("Closed - ", "");
+                      return (
+                        <button
+                          key={sub}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setClosedTab(isActive ? null : sub);
+                          }}
+                          className={`flex-1 text-center font-semibold uppercase tracking-wide transition-colors border-b-2 ${
+                            isExpanded ? "text-[11px] py-2 px-2" : "text-[9px] py-1.5 px-1"
+                          } ${
+                            isActive
+                              ? "text-blue-600 border-blue-600 bg-blue-50"
+                              : "text-gray-400 border-transparent hover:text-gray-600"
+                          }`}
+                        >
+                          <span>{shortName}</span>
+                          <span className={`ml-0.5 opacity-70 ${isExpanded ? "text-[10px]" : "text-[8px]"}`}>({count})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <CardContent className={`${isExpanded ? "p-4 pt-0" : "p-2 pt-0"} max-h-[60vh] overflow-y-auto`}>
+                {col.permits.length === 0 ? (
+                  <div className={`${isExpanded ? "text-sm" : "text-xs"} text-gray-300 text-center py-4`}>Empty</div>
+                ) : (
+                  col.permits.map((permit) => (
+                    <div
+                      key={permit.record_number}
+                      className={`relative mb-2 rounded border bg-white cursor-pointer hover:shadow-md transition-all ${
+                        isExpanded ? "p-4 text-sm" : "p-2.5 text-xs"
+                      } ${
+                        permit.changed
+                          ? permit.change_info?.is_backward
+                            ? "bg-red-50 border-red-200"
+                            : "bg-blue-50 border-blue-200"
+                          : "border-gray-200"
+                      }`}
+                      onClick={() => handleShowTimeline(permit.record_number)}
+                    >
+                      {permit.changed && (
+                        <span
+                          className={`absolute rounded-full ${
+                            isExpanded ? "top-4 right-4 w-2.5 h-2.5" : "top-2 right-2 w-1.5 h-1.5"
+                          } ${
+                            permit.change_info?.is_backward
+                              ? "bg-red-500"
+                              : "bg-blue-500"
+                          }`}
+                        />
+                      )}
+                      <div
+                        className={`font-semibold text-gray-900 truncate pr-3 ${
+                          isExpanded ? "text-sm md:text-base leading-snug" : "text-xs font-medium"
                         }`}
+                        title={permit.address}
                       >
-                        <span>{shortName}</span>
-                        <span className="ml-0.5 text-[8px] opacity-70">({count})</span>
-                      </button>
+                        {permit.address}
+                      </div>
+                      <div className={`text-gray-400 font-mono mt-0.5 ${
+                        isExpanded ? "text-xs" : "text-[10px]"
+                      }`}>
+                        {permit.record_number}
+                      </div>
+                      <div className="mt-1.5">
+                        <Badge variant="outline" className={`${isExpanded ? "text-xs px-2 py-0.5" : "text-[9px] px-1 py-0"}`}>
+                          {permit.current_status}
+                        </Badge>
+                      </div>
+                      {permit.changed && permit.change_info && (
+                        <div className={`mt-1.5 text-gray-600 ${
+                          isExpanded ? "text-xs" : "text-[10px]"
+                        }`}>
+                          {permit.change_info.from_status} → {permit.change_info.to_status}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Dialog open={!!dialogPermit} onOpenChange={() => setDialogPermit(null)}>
+        <DialogContent className="max-w-md md:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Permit Details & Timeline</DialogTitle>
+          </DialogHeader>
+          {timelineLoading && (
+            <div className="flex justify-center items-center py-8 text-sm text-gray-500">
+              <span className="animate-pulse">Loading timeline data...</span>
+            </div>
+          )}
+          {!timelineLoading && timelineData && (
+            <div className="space-y-5">
+              {/* Permit Summary Card */}
+              <div className="p-4 bg-gray-50 border rounded-lg space-y-2">
+                <div className="flex justify-between items-start gap-4">
+                  <div>
+                    <h3 className="font-bold text-gray-900 text-sm md:text-base leading-snug">{timelineData.permit.address}</h3>
+                    <p className="text-xs text-gray-400 font-mono mt-0.5">{timelineData.permit.record_number}</p>
+                  </div>
+                  <Badge 
+                    style={{
+                      backgroundColor: `${LANE_COLOR[timelineData.permit.current_milestone] || '#9ca3af'}15`,
+                      color: LANE_COLOR[timelineData.permit.current_milestone] || '#9ca3af',
+                      borderColor: `${LANE_COLOR[timelineData.permit.current_milestone] || '#9ca3af'}40`
+                    }}
+                    variant="outline" 
+                    className="text-xs font-semibold px-2 py-0.5 border"
+                  >
+                    {timelineData.permit.current_status}
+                  </Badge>
+                </div>
+                {timelineData.permit.description && (
+                  <p className="text-xs text-gray-500 italic line-clamp-2 mt-1">{timelineData.permit.description}</p>
+                )}
+                <div className="h-px bg-gray-200 my-2" />
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500">
+                  <div>
+                    <span className="font-medium text-gray-400">First Applied:</span>{" "}
+                    <span className="font-semibold text-gray-700">{timelineData.permit.first_seen_date}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-400">Last Seen:</span>{" "}
+                    <span className="font-semibold text-gray-700">{timelineData.permit.last_seen_date}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline Chronology */}
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">History / Observations</h4>
+                <div className="relative pl-6 space-y-4 border-l border-gray-200 ml-3">
+                  {timelineData.timeline.map((entry: any, index: number) => {
+                    const milestoneColor = LANE_COLOR[entry.milestone] || "#9ca3af";
+                    return (
+                      <div key={index} className="relative">
+                        {/* Dot on the timeline line */}
+                        <span 
+                          style={{ backgroundColor: milestoneColor }}
+                          className={`absolute -left-[30px] top-1 rounded-full border-4 border-white ${
+                            entry.is_status_change ? 'w-4 h-4 -left-[32px]' : 'w-3 h-3'
+                          }`}
+                        />
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono text-gray-400">{entry.observed_date}</span>
+                            {entry.is_status_change && (
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 bg-blue-50 text-blue-600 hover:bg-blue-50 border-none font-medium">
+                                Status Change
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs font-semibold text-gray-800">
+                            {entry.status}
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            Milestone: {LANE_DISPLAY[entry.milestone] || entry.milestone} (Upload ID: {entry.upload_id})
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               </div>
-            )}
-
-            <CardContent className="p-2 pt-0 max-h-[60vh] overflow-y-auto">
-              {col.permits.length === 0 ? (
-                <div className="text-xs text-gray-300 text-center py-4">Empty</div>
-              ) : (
-                col.permits.map((permit) => (
-                  <div
-                    key={permit.record_number}
-                    className={`relative p-2.5 mb-2 rounded border bg-white cursor-pointer hover:shadow-md transition-all text-xs ${
-                      permit.changed
-                        ? permit.change_info?.is_backward
-                          ? "bg-red-50 border-red-200"
-                          : permit.change_info?.is_tracked_milestone
-                          ? "bg-purple-50 border-purple-200"
-                          : "bg-blue-50 border-blue-200"
-                        : "border-gray-200"
-                    }`}
-                    onClick={() => handleShowTimeline(permit.record_number)}
-                  >
-                    {permit.changed && (
-                      <span
-                        className={`absolute top-2 right-2 w-1.5 h-1.5 rounded-full ${
-                          permit.change_info?.is_backward
-                            ? "bg-red-500"
-                            : permit.change_info?.is_tracked_milestone
-                            ? "bg-purple-500"
-                            : "bg-blue-500"
-                        }`}
-                      />
-                    )}
-                    <div
-                      className="font-medium text-gray-900 truncate pr-3"
-                      title={permit.address}
-                    >
-                      {permit.address}
-                    </div>
-                    <div className="text-[10px] text-gray-400 font-mono mt-0.5">
-                      {permit.record_number}
-                    </div>
-                    <div className="mt-1.5">
-                      <Badge variant="outline" className="text-[9px] px-1 py-0">
-                        {permit.current_status}
-                      </Badge>
-                    </div>
-                    {permit.changed && permit.change_info && (
-                      <div className="mt-1 text-[10px] text-gray-500">
-                        {permit.change_info.from_status} → {permit.change_info.to_status}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Dialog open={!!dialogPermit} onOpenChange={() => setDialogPermit(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-sm">Permit Timeline</DialogTitle>
-          </DialogHeader>
-          <div className="text-xs text-gray-500">{dialogPermit}</div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

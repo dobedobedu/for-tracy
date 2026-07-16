@@ -318,3 +318,43 @@ class SQLiteStore(EventLogStore):
         conn = self._get_conn()
         conn.execute("DELETE FROM street_community WHERE id = ?", (mapping_id,))
         conn.commit()
+
+    def delete_upload(self, upload_id: int) -> None:
+        conn = self._get_conn()
+        conn.execute("DELETE FROM status_changes WHERE detected_on_upload_id = ?", (upload_id,))
+        conn.execute("DELETE FROM observations WHERE upload_id = ?", (upload_id,))
+        conn.execute("DELETE FROM uploads WHERE id = ?", (upload_id,))
+        
+        # Delete permits that no longer have any observations
+        conn.execute(
+            """DELETE FROM permits 
+               WHERE record_number NOT IN (SELECT DISTINCT record_number FROM observations)"""
+        )
+        
+        # Update current status, milestone, and seen dates for the remaining permits
+        rows = conn.execute(
+            """SELECT record_number, status, milestone, observed_date 
+               FROM observations 
+               ORDER BY record_number, observed_date ASC"""
+        ).fetchall()
+        
+        import collections
+        grouped = collections.defaultdict(list)
+        for r in rows:
+            grouped[r["record_number"]].append(r)
+            
+        for rn, obs_list in grouped.items():
+            first_seen = obs_list[0]["observed_date"]
+            last_obs = obs_list[-1]
+            last_seen = last_obs["observed_date"]
+            status = last_obs["status"]
+            milestone = last_obs["milestone"]
+            conn.execute(
+                """UPDATE permits 
+                   SET first_seen_date = ?, last_seen_date = ?, current_status = ?, current_milestone = ? 
+                   WHERE record_number = ?""",
+                (first_seen, last_seen, status, milestone, rn)
+            )
+            
+        conn.commit()
+

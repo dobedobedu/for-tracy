@@ -374,3 +374,45 @@ class PostgresStore(EventLogStore):
         with conn.cursor() as cur:
             cur.execute("DELETE FROM street_community WHERE id = %s", (mapping_id,))
         conn.commit()
+
+    def delete_upload(self, upload_id: int) -> None:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM status_changes WHERE detected_on_upload_id = %s", (upload_id,))
+            cur.execute("DELETE FROM observations WHERE upload_id = %s", (upload_id,))
+            cur.execute("DELETE FROM uploads WHERE id = %s", (upload_id,))
+            
+            # Delete permits that no longer have any observations
+            cur.execute(
+                """DELETE FROM permits 
+                   WHERE record_number NOT IN (SELECT DISTINCT record_number FROM observations)"""
+            )
+            
+            # Update current status, milestone, and seen dates for the remaining permits
+            cur.execute(
+                """SELECT record_number, status, milestone, observed_date 
+                   FROM observations 
+                   ORDER BY record_number, observed_date ASC"""
+            )
+            rows = cur.fetchall()
+            
+            import collections
+            grouped = collections.defaultdict(list)
+            for r in rows:
+                grouped[r["record_number"]].append(r)
+                
+            for rn, obs_list in grouped.items():
+                first_seen = obs_list[0]["observed_date"]
+                last_obs = obs_list[-1]
+                last_seen = last_obs["observed_date"]
+                status = last_obs["status"]
+                milestone = last_obs["milestone"]
+                cur.execute(
+                    """UPDATE permits 
+                       SET first_seen_date = %s, last_seen_date = %s, current_status = %s, current_milestone = %s 
+                       WHERE record_number = %s""",
+                    (first_seen, last_seen, status, milestone, rn)
+                )
+                
+        conn.commit()
+

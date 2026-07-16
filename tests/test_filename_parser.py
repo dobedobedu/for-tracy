@@ -20,3 +20,9 @@ def test_falls_back_to_upload_date():
 
 def test_parses_leading_date_only():
     assert parse_report_date_from_filename("3.3.26.csv") == "2026-03-03"
+
+
+def test_parses_yyyymmdd_format():
+    assert parse_report_date_from_filename("RecordList20260601.csv") == "2026-06-01"
+    assert parse_report_date_from_filename("RecordList20260608.csv") == "2026-06-08"
+

@@ -143,3 +143,8 @@ class EventLogStore(ABC):
     @abstractmethod
     def delete_street_community(self, mapping_id: int) -> None:
         ...
+
+    @abstractmethod
+    def delete_upload(self, upload_id: int) -> None:
+        ...
+

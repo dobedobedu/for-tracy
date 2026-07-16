@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from engine.status import Milestone, get_milestone, is_tracked_transition, is_backward_move
+from engine.status import Milestone, get_milestone, is_backward_move
 
 
 @dataclass
@@ -86,7 +86,7 @@ def detect_changes(
                 from_milestone=from_ms,
                 to_milestone=to_ms,
                 change_date=row.date,
-                is_tracked_milestone=is_tracked_transition(to_ms),
+                is_tracked_milestone=False,
                 is_backward=is_backward_move(from_ms, to_ms),
             ))
         else:

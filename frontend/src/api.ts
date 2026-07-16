@@ -70,6 +70,14 @@ export async function getUploads(): Promise<Upload[]> {
   return data.uploads;
 }
 
+export async function deleteUpload(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/uploads/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+
 export async function getCalendar(): Promise<{ date: string; uploads: number; permits_observed: number }[]> {
   const res = await fetch(`${API_BASE}/calendar`);
   const data = await res.json();
@@ -100,10 +108,10 @@ export async function getCommunities(onlyChanged?: boolean, fromDate?: string, t
   return data.communities;
 }
 
-export async function getTimeline(recordNumber: string): Promise<any[]> {
+export async function getTimeline(recordNumber: string): Promise<any> {
   const res = await fetch(`${API_BASE}/permits/${recordNumber}/timeline`);
-  const data = await res.json();
-  return data.timeline;
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
 export async function getStreetMappings(): Promise<{ id: number; street_name: string; community_name: string }[]> {
