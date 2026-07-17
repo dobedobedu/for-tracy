@@ -18,6 +18,17 @@ class PostgresStore(EventLogStore):
         self.conn = None
 
     def _get_conn(self):
+        if self.conn is not None:
+            try:
+                with self.conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                try:
+                    self.conn.close()
+                except Exception:
+                    pass
+                self.conn = None
+
         if self.conn is None or self.conn.closed:
             self.conn = psycopg2.connect(self.dsn, cursor_factory=RealDictCursor)
         return self.conn
