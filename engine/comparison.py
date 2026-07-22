@@ -22,6 +22,15 @@ def compare_reports(store: EventLogStore, from_date: str, to_date: str) -> dict:
                 "address": p.address,
                 "from_status": fs,
                 "to_status": ts,
+                "is_new": False,
+            })
+        elif not fs and ts:
+            transitions.append({
+                "record_number": p.record_number,
+                "address": p.address,
+                "from_status": "New Application",
+                "to_status": ts,
+                "is_new": True,
             })
 
     return {

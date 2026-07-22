@@ -139,6 +139,14 @@ async def get_kanban(
         if col not in columns:
             col = Milestone.UNRECOGNIZED.value
         change_info = changed_records.get(p.record_number)
+        if change_info is None and latest_upload and p.first_seen_date == latest_upload.report_date:
+            change_info = {
+                "from_status": "New Application",
+                "to_status": p.current_status,
+                "is_tracked_milestone": True,
+                "is_backward": False,
+                "is_new": True,
+            }
         card = {
             "record_number": p.record_number,
             "address": p.address,

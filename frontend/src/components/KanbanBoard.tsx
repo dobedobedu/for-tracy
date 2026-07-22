@@ -61,6 +61,7 @@ interface Permit {
     to_status: string;
     is_backward: boolean;
     is_tracked_milestone: boolean;
+    is_new?: boolean;
   };
 }
 
@@ -75,8 +76,8 @@ export function KanbanBoard({
     closed_sub_statuses?: Record<string, number>;
   };
   selectedTransition: { from: string; to: string } | null;
-  legendFilter: "changed" | "backward" | null;
-  onLegendFilter: (filter: "changed" | "backward" | null) => void;
+  legendFilter: "changed" | "new" | "backward" | null;
+  onLegendFilter: (filter: "changed" | "new" | "backward" | null) => void;
 }) {
   const [dialogPermit, setDialogPermit] = useState<string | null>(null);
   const [timelineData, setTimelineData] = useState<any | null>(null);
@@ -142,6 +143,7 @@ export function KanbanBoard({
         permits = permits.filter((p) => {
           if (!p.changed || !p.change_info) return false;
           if (legendFilter === "backward") return p.change_info.is_backward;
+          if (legendFilter === "new") return p.change_info.is_new || p.change_info.from_status === "New Application";
           if (legendFilter === "changed") return !p.change_info.is_backward;
           return false;
         });
@@ -150,8 +152,9 @@ export function KanbanBoard({
       return { ...col, permits };
     });
 
-  const legendItems: { key: "changed" | "backward"; label: string; dotClass: string }[] = [
+  const legendItems: { key: "changed" | "new" | "backward"; label: string; dotClass: string }[] = [
     { key: "changed", label: "Changed", dotClass: "bg-blue-500" },
+    { key: "new", label: "New Permit", dotClass: "bg-emerald-500" },
     { key: "backward", label: "Backward", dotClass: "bg-red-500" },
   ];
 
@@ -326,7 +329,9 @@ export function KanbanBoard({
                         isExpanded ? "p-4 text-sm" : "p-2.5 text-xs"
                       } ${
                         permit.changed
-                          ? permit.change_info?.is_backward
+                          ? permit.change_info?.is_new || permit.change_info?.from_status === "New Application"
+                            ? "bg-emerald-50 border-emerald-200"
+                            : permit.change_info?.is_backward
                             ? "bg-red-50 border-red-200"
                             : "bg-blue-50 border-blue-200"
                           : "border-gray-200"
@@ -338,7 +343,9 @@ export function KanbanBoard({
                           className={`absolute rounded-full ${
                             isExpanded ? "top-4 right-4 w-2.5 h-2.5" : "top-2 right-2 w-1.5 h-1.5"
                           } ${
-                            permit.change_info?.is_backward
+                            permit.change_info?.is_new || permit.change_info?.from_status === "New Application"
+                              ? "bg-emerald-500"
+                              : permit.change_info?.is_backward
                               ? "bg-red-500"
                               : "bg-blue-500"
                           }`}
@@ -357,10 +364,15 @@ export function KanbanBoard({
                       }`}>
                         {permit.record_number}
                       </div>
-                      <div className="mt-1.5">
+                      <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                         <Badge variant="outline" className={`${isExpanded ? "text-xs px-2 py-0.5" : "text-[9px] px-1 py-0"}`}>
                           {permit.current_status}
                         </Badge>
+                        {(permit.change_info?.is_new || permit.change_info?.from_status === "New Application") && (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px] px-1.5 py-0 border-0">
+                            NEW
+                          </Badge>
+                        )}
                       </div>
                       {permit.changed && permit.change_info && (
                         <div className={`mt-1.5 text-gray-600 ${

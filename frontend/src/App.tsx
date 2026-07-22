@@ -13,7 +13,7 @@ export default function App() {
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [selectedTransition, setSelectedTransition] = useState<{ from: string; to: string } | null>(null);
   const [selectedCommunities, setSelectedCommunities] = useState<string[]>([]);
-  const [legendFilter, setLegendFilter] = useState<"changed" | "backward" | null>(null);
+  const [legendFilter, setLegendFilter] = useState<"changed" | "new" | "backward" | null>(null);
   const [kanbanData, setKanbanData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [streetMappings, setStreetMappings] = useState<{ id: number; street_name: string; community_name: string }[]>([]);
@@ -100,7 +100,7 @@ export default function App() {
     }
   };
 
-  const handleLegendFilter = (filter: "changed" | "backward" | null) => {
+  const handleLegendFilter = (filter: "changed" | "new" | "backward" | null) => {
     setLegendFilter((prev) => (prev === filter ? null : filter));
   };
 
