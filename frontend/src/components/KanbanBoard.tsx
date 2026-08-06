@@ -120,6 +120,15 @@ export function KanbanBoard({
     }
   };
 
+  const isPermitMatchingFilter = (p: Permit, filter: "changed" | "new" | "backward" | null) => {
+    if (!filter) return true;
+    if (!p.changed || !p.change_info) return false;
+    if (filter === "backward") return p.change_info.is_backward;
+    if (filter === "new") return p.change_info.is_new || p.change_info.from_status === "New Application";
+    if (filter === "changed") return !p.change_info.is_backward;
+    return false;
+  };
+
   const filteredColumns = columns
     .filter((col) => visibleLanes.includes(col.milestone))
     .map((col) => {
@@ -139,17 +148,9 @@ export function KanbanBoard({
         });
       }
 
-      if (legendFilter) {
-        permits = permits.filter((p) => {
-          if (!p.changed || !p.change_info) return false;
-          if (legendFilter === "backward") return p.change_info.is_backward;
-          if (legendFilter === "new") return p.change_info.is_new || p.change_info.from_status === "New Application";
-          if (legendFilter === "changed") return !p.change_info.is_backward;
-          return false;
-        });
-      }
+      const matchingCount = permits.filter((p) => isPermitMatchingFilter(p, legendFilter)).length;
 
-      return { ...col, permits };
+      return { ...col, permits, matchingCount };
     });
 
   const legendItems: { key: "changed" | "new" | "backward"; label: string; dotClass: string }[] = [
@@ -280,7 +281,7 @@ export function KanbanBoard({
                 <CardTitle className={`${isExpanded ? "text-sm font-bold" : "text-[11px] font-semibold"} uppercase tracking-wide text-gray-500 flex justify-between items-center`}>
                   <span>{LANE_DISPLAY[col.milestone] || col.milestone}</span>
                   <Badge variant="secondary" className={`${isExpanded ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0"}`}>
-                    {col.permits.length}
+                    {legendFilter ? `${col.matchingCount} / ${col.permits.length}` : col.permits.length}
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -322,22 +323,27 @@ export function KanbanBoard({
                 {col.permits.length === 0 ? (
                   <div className={`${isExpanded ? "text-sm" : "text-xs"} text-gray-300 text-center py-4`}>Empty</div>
                 ) : (
-                  col.permits.map((permit) => (
-                    <div
-                      key={permit.record_number}
-                      className={`relative mb-2 rounded border bg-white cursor-pointer hover:shadow-md transition-all ${
-                        isExpanded ? "p-4 text-sm" : "p-2.5 text-xs"
-                      } ${
-                        permit.changed
-                          ? permit.change_info?.is_new || permit.change_info?.from_status === "New Application"
-                            ? "bg-emerald-50 border-emerald-200"
-                            : permit.change_info?.is_backward
-                            ? "bg-red-50 border-red-200"
-                            : "bg-blue-50 border-blue-200"
-                          : "border-gray-200"
-                      }`}
-                      onClick={() => handleShowTimeline(permit.record_number)}
-                    >
+                  col.permits.map((permit) => {
+                    const isMatch = isPermitMatchingFilter(permit, legendFilter);
+                    const isDimmed = legendFilter !== null && !isMatch;
+                    return (
+                      <div
+                        key={permit.record_number}
+                        className={`relative mb-2 rounded border bg-white cursor-pointer transition-all ${
+                          isExpanded ? "p-4 text-sm" : "p-2.5 text-xs"
+                        } ${
+                          isDimmed
+                            ? "opacity-35 grayscale-[30%] border-gray-200 hover:opacity-80"
+                            : permit.changed
+                            ? permit.change_info?.is_new || permit.change_info?.from_status === "New Application"
+                              ? "bg-emerald-50 border-emerald-200 hover:shadow-md"
+                              : permit.change_info?.is_backward
+                              ? "bg-red-50 border-red-200 hover:shadow-md"
+                              : "bg-blue-50 border-blue-200 hover:shadow-md"
+                            : "border-gray-200 hover:shadow-md"
+                        }`}
+                        onClick={() => handleShowTimeline(permit.record_number)}
+                      >
                       {permit.changed && (
                         <span
                           className={`absolute rounded-full ${
@@ -382,7 +388,8 @@ export function KanbanBoard({
                         </div>
                       )}
                     </div>
-                  ))
+                  );
+                })
                 )}
               </CardContent>
             </Card>
