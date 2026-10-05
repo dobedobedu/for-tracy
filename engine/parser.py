@@ -53,7 +53,10 @@ def extract_community(address: str) -> str:
         "240 BLUE MIST Way" -> "BLUE MIST"
         "1262 PALM VIEW Rd" -> "PALM VIEW"
     """
-    address = address.strip()
+    # Accela annotates private-provider records before the address, sometimes
+    # without a space before the house number. Preserve the original address
+    # on ParsedRow; remove only this known annotation for street matching.
+    address = re.sub(r'^\*+PP\*+\s*', '', address.strip(), flags=re.IGNORECASE)
     # Take only the part before first comma if present
     street_part = address.split(",")[0].strip()
     words = street_part.split()
@@ -71,6 +74,26 @@ def extract_community(address: str) -> str:
             break
 
     return " ".join(words)
+
+
+def normalize_street_community_map(mapping: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Normalize the reference keys without changing the stored source data.
+
+    COMACK is the confirmed Bungalow Walk reference typo. Add the corrected
+    key only for that association; preserve shared-street memberships.
+    """
+    normalized: dict[str, list[str]] = {}
+    for street, communities in mapping.items():
+        key = extract_community(street).strip().upper()
+        if not key:
+            continue
+        for community in communities:
+            if community not in normalized.setdefault(key, []):
+                normalized[key].append(community)
+            if key == 'COMACK' and community.strip().upper() == 'BUNGALOW WALK':
+                if community not in normalized.setdefault('CORMACK', []):
+                    normalized['CORMACK'].append(community)
+    return normalized
 
 
 def resolve_community(
