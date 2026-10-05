@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from engine.parser import parse_csv, ScopeFilter, ParsedRow
+from engine.parser import parse_csv, ScopeFilter, ParsedRow, normalize_street_community_map
 from engine.diff import detect_changes, DiffResult
 from engine.status import Milestone
 from engine.filename_parser import parse_report_date_from_filename
@@ -36,6 +36,16 @@ def ingest_csv(
     store: EventLogStore,
     scope: ScopeFilter | None = None,
 ) -> IngestionResult:
+    with store.transaction():
+        return _ingest_csv(file_content, filename, store, scope)
+
+
+def _ingest_csv(
+    file_content: bytes | str,
+    filename: str,
+    store: EventLogStore,
+    scope: ScopeFilter | None = None,
+) -> IngestionResult:
     if isinstance(file_content, bytes):
         df = pd.read_csv(io.BytesIO(file_content), dtype=str)
     else:
@@ -48,12 +58,7 @@ def ingest_csv(
         scope = ScopeFilter()
 
     street_community_map = store.get_street_community_map()
-    from engine.parser import extract_community
-    normalized_map = {}
-    for street_name, communities in street_community_map.items():
-        key = extract_community(street_name).strip().upper()
-        if key:
-            normalized_map.setdefault(key, []).extend(communities)
+    normalized_map = normalize_street_community_map(street_community_map)
     parsed_rows, dropped = parse_csv(df, scope, normalized_map)
     row_count_after_scope = len(parsed_rows)
 
@@ -80,7 +85,7 @@ def ingest_csv(
             description=np.description,
             address=np.address,
             city_state_zip=np.city_state_zip,
-            first_seen_date=np.observed_date,
+            first_seen_date=report_date,
             last_seen_date=report_date,
             current_status=np.status,
             current_milestone=np.milestone.value,
@@ -182,11 +187,7 @@ def ingest_csv(
 def update_all_permit_communities(store: EventLogStore) -> None:
     from engine.parser import extract_community
     street_community_map = store.get_street_community_map()
-    normalized_map = {}
-    for street_name, communities in street_community_map.items():
-        key = extract_community(street_name).strip().upper()
-        if key:
-            normalized_map.setdefault(key, []).extend(communities)
+    normalized_map = normalize_street_community_map(street_community_map)
 
     permits = store.get_all_permits()
     for p in permits:

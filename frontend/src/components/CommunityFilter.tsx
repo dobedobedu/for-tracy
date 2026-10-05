@@ -22,6 +22,7 @@ function saveSet(key: string, values: string[]) {
 }
 
 export function CommunityFilter({
+  refreshKey = 0,
   fromDate,
   toDate,
   selected,
@@ -30,6 +31,7 @@ export function CommunityFilter({
   onSelectAllLwr,
   lwrCommunityNames,
 }: {
+  refreshKey?: number;
   fromDate?: string;
   toDate?: string;
   selected: string[];
@@ -45,8 +47,10 @@ export function CommunityFilter({
   const [hidden, setHidden] = useState<string[]>(loadSet(HIDDEN_KEY));
 
   useEffect(() => {
-    getCommunities(false, fromDate, toDate).then(setCommunities);
-  }, [fromDate, toDate]);
+    let active = true;
+    getCommunities(false, fromDate, toDate).then((result) => { if (active) setCommunities(result); });
+    return () => { active = false; };
+  }, [fromDate, toDate, refreshKey]);
 
   const isPinned = (name: string) => pinned.includes(name);
   const isHidden = (name: string) => hidden.includes(name);

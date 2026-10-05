@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import ContextManager
 from dataclasses import dataclass
 from engine.status import Milestone
 
@@ -69,6 +70,11 @@ class StreetCommunityMapping:
 
 class EventLogStore(ABC):
     @abstractmethod
+    def transaction(self) -> ContextManager[None]:
+        """Atomically publish a complete report ingestion."""
+        ...
+
+    @abstractmethod
     def initialize(self) -> None:
         ...
 
@@ -106,6 +112,11 @@ class EventLogStore(ABC):
 
     @abstractmethod
     def get_all_permits(self) -> list[PermitRecord]:
+        ...
+
+    @abstractmethod
+    def get_snapshot(self, upload_id: int) -> list[PermitRecord]:
+        """Return only members of this upload, with its observed status/date."""
         ...
 
     @abstractmethod
@@ -147,4 +158,3 @@ class EventLogStore(ABC):
     @abstractmethod
     def delete_upload(self, upload_id: int) -> None:
         ...
-

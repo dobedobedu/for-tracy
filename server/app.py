@@ -9,9 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from engine.orchestrator import ingest_csv, IngestionResult, update_all_permit_communities
-from engine.parser import ScopeFilter
+from engine.parser import ScopeFilter, normalize_street_community_map, resolve_community
 from engine.status import MILESTONE_ORDER, Milestone
-from engine.comparison import compare_reports
+from engine.comparison import compare_reports, canonical_uploads, select_upload, snapshot_transitions
 from engine.summary import build_transition_summary
 from store.sqlite_store import SQLiteStore
 from store.postgres_store import PostgresStore
@@ -45,7 +45,14 @@ def get_store() -> EventLogStore:
 @app.on_event("startup")
 async def startup():
     get_store().initialize()
-    update_all_permit_communities(get_store())
+
+
+def resolve_snapshot_communities(s: EventLogStore, permits: list):
+    """Correct matching on read, without bulk rewriting customer records."""
+    mapping = normalize_street_community_map(s.get_street_community_map())
+    for permit in permits:
+        permit.community = resolve_community(permit.address, mapping)
+    return permits
 
 
 @app.post("/api/upload")
@@ -78,28 +85,25 @@ async def upload_csv(file: UploadFile = File(...)):
 async def get_kanban(
     community: str | None = Query(None),
     report_date: str | None = Query(None),
+    from_date: str | None = None,
 ):
     s = get_store()
-    
-    if report_date:
-        uploads = s.get_upload_history()
-        matching = [u for u in uploads if u.report_date == report_date]
-        if matching:
-            matching.sort(key=lambda u: u.uploaded_at)
-            upload_id = matching[0].id
-            permits = s.get_all_permits()
-            changes = s.get_latest_changes(upload_id)
-            latest_upload = matching[0]
-        else:
-            permits = s.get_all_permits()
-            latest_upload = s.get_latest_upload()
-            changes = []
+    uploads = canonical_uploads(s)
+    latest_upload = select_upload(uploads, report_date)
+    if report_date and latest_upload is None:
+        raise HTTPException(status_code=404, detail='Report not found')
+    if from_date and latest_upload and from_date > latest_upload.report_date:
+        raise HTTPException(status_code=400, detail='From report must not be later than to report')
+    if from_date:
+        baseline = select_upload(uploads, from_date)
+        if baseline is None:
+            raise HTTPException(status_code=404, detail='From report not found')
     else:
-        permits = s.get_all_permits()
-        latest_upload = s.get_latest_upload()
-        changes = []
-        if latest_upload:
-            changes = s.get_latest_changes(latest_upload.id)
+        earlier = [u for u in uploads if latest_upload and u.report_date < latest_upload.report_date]
+        baseline = earlier[-1] if earlier else None
+    permits = s.get_snapshot(latest_upload.id) if latest_upload else []
+    changes = snapshot_transitions(s.get_snapshot(baseline.id), permits, baseline.report_date) if baseline else []
+    permits = resolve_snapshot_communities(s, permits)
 
     if community:
         # Support multiple communities as comma-separated. The community field uses
@@ -113,14 +117,9 @@ async def get_kanban(
             return req in permit.address.upper()
         permits = [p for p in permits if any(permit_matches(r, p) for r in requested)]
 
-    changed_records = {}
-    for c in changes:
-        changed_records[c.record_number] = {
-            "from_status": c.from_status,
-            "to_status": c.to_status,
-            "is_tracked_milestone": c.is_tracked_milestone,
-            "is_backward": c.is_backward,
-        }
+    changed_records = {c['record_number']: {
+        key: c[key] for key in ('from_status', 'to_status', 'is_tracked_milestone', 'is_backward', 'is_new')
+    } for c in changes}
 
     columns = {}
     for ms in MILESTONE_ORDER:
@@ -139,14 +138,6 @@ async def get_kanban(
         if col not in columns:
             col = Milestone.UNRECOGNIZED.value
         change_info = changed_records.get(p.record_number)
-        if change_info is None and latest_upload and p.first_seen_date == latest_upload.report_date:
-            change_info = {
-                "from_status": "New Application",
-                "to_status": p.current_status,
-                "is_tracked_milestone": True,
-                "is_backward": False,
-                "is_new": True,
-            }
         card = {
             "record_number": p.record_number,
             "address": p.address,
@@ -371,18 +362,26 @@ async def get_compare(from_date: str = Query(...), to_date: str = Query(...)):
 @app.get("/api/communities")
 async def get_communities(only_changed: bool = Query(False), from_date: str = Query(None), to_date: str = Query(None)):
     s = get_store()
-    permits = s.get_all_permits()
+    selected = select_upload(canonical_uploads(s), to_date)
+    if to_date and selected is None:
+        raise HTTPException(status_code=404, detail='Report not found')
+    permits = resolve_snapshot_communities(s, s.get_snapshot(selected.id) if selected else [])
 
     changed_record_numbers = set()
-    if only_changed:
-        if from_date and to_date:
-            cmp = compare_reports(s, from_date, to_date)
-            changed_record_numbers = {t["record_number"] for t in cmp.get("transitions", [])}
+    if only_changed and selected:
+        uploads = canonical_uploads(s)
+        if from_date:
+            baseline = select_upload(uploads, from_date)
+            if baseline is None:
+                raise HTTPException(status_code=404, detail='From report not found')
+            if from_date > selected.report_date:
+                raise HTTPException(status_code=400, detail='From report must not be later than to report')
         else:
-            latest_upload = s.get_latest_upload()
-            if latest_upload:
-                changes = s.get_latest_changes(latest_upload.id)
-                changed_record_numbers = {c.record_number for c in changes}
+            earlier = [u for u in uploads if u.report_date < selected.report_date]
+            baseline = earlier[-1] if earlier else None
+        if baseline:
+            changes = snapshot_transitions(s.get_snapshot(baseline.id), permits, baseline.report_date)
+            changed_record_numbers = {c['record_number'] for c in changes}
 
     communities = {}
     for p in permits:

@@ -90,11 +90,13 @@ export async function getCompare(fromDate: string, toDate: string): Promise<Comp
   return res.json();
 }
 
-export async function getKanban(communities?: string[], reportDate?: string): Promise<{ columns: KanbanColumn[]; latest_upload?: { filename: string; report_date: string } }> {
+export async function getKanban(communities?: string[], reportDate?: string, fromDate?: string): Promise<{ columns: KanbanColumn[]; latest_upload?: { filename: string; report_date: string } }> {
   const params = new URLSearchParams();
   if (communities && communities.length > 0) params.append("community", communities.join(","));
   if (reportDate) params.append("report_date", reportDate);
+  if (fromDate) params.append("from_date", fromDate);
   const res = await fetch(`${API_BASE}/kanban?${params.toString()}`);
+  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 

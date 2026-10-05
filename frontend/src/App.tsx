@@ -42,21 +42,26 @@ export default function App() {
 
   useEffect(() => {
     if (uploads.length >= 2) {
-      const sorted = [...uploads].sort((a, b) => b.report_date.localeCompare(a.report_date));
-      setToDate(sorted[0].report_date);
-      setFromDate(sorted[1].report_date);
+      const dates = [...new Set(uploads.map((u) => u.report_date))].sort().reverse();
+      setToDate(dates[0]);
+      setFromDate(dates[1] || dates[0]);
     }
   }, [uploads]);
 
   useEffect(() => {
+    let active = true;
     if (fromDate && toDate) {
-      getCompare(fromDate, toDate).then(setCompareResult);
+      getCompare(fromDate, toDate).then((result) => { if (active) setCompareResult(result); });
     }
-  }, [fromDate, toDate]);
+    return () => { active = false; };
+  }, [fromDate, toDate, refreshKey]);
 
   useEffect(() => {
-    getKanban(selectedCommunities.length > 0 ? selectedCommunities : undefined, toDate || undefined).then(setKanbanData);
-  }, [selectedCommunities, toDate, refreshKey]);
+    let active = true;
+    getKanban(selectedCommunities.length > 0 ? selectedCommunities : undefined, toDate || undefined, fromDate || undefined)
+      .then((result) => { if (active) setKanbanData(result); });
+    return () => { active = false; };
+  }, [selectedCommunities, fromDate, toDate, refreshKey]);
 
   // Distinct LWR community names (from street_community mapping)
   const lwrCommunityNames = useMemo(() => {
@@ -152,6 +157,7 @@ export default function App() {
               )}
             </div>
             <CommunityFilter
+              refreshKey={refreshKey}
               fromDate={fromDate || undefined}
               toDate={toDate || undefined}
               selected={selectedCommunities}

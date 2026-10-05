@@ -1,6 +1,7 @@
 import os
 import re
 from datetime import datetime, timezone
+from contextlib import contextmanager
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -16,8 +17,11 @@ class PostgresStore(EventLogStore):
     def __init__(self, dsn: str | None = None):
         self.dsn = dsn or os.environ.get("DATABASE_URL", "")
         self.conn = None
+        self._in_transaction = False
 
     def _get_conn(self):
+        if self._in_transaction:
+            return self.conn
         if self.conn is not None:
             try:
                 with self.conn.cursor() as cur:
@@ -32,6 +36,26 @@ class PostgresStore(EventLogStore):
         if self.conn is None or self.conn.closed:
             self.conn = psycopg2.connect(self.dsn, cursor_factory=RealDictCursor)
         return self.conn
+
+    def _commit(self, conn):
+        if not self._in_transaction:
+            conn.commit()
+
+    @contextmanager
+    def transaction(self):
+        """Publish an upload and all of its rows together, or roll them back."""
+        if self._in_transaction:
+            raise RuntimeError('Nested store transactions are not supported')
+        conn = self._get_conn()
+        self._in_transaction = True
+        try:
+            yield
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            self._in_transaction = False
 
     def initialize(self) -> None:
         conn = self._get_conn()
@@ -109,7 +133,7 @@ class PostgresStore(EventLogStore):
                 CREATE INDEX IF NOT EXISTS idx_street_community_street
                 ON street_community(street_name)
             """)
-        conn.commit()
+        self._commit(conn)
 
     def get_current_statuses(self) -> dict[str, PermitRecord]:
         conn = self._get_conn()
@@ -159,7 +183,7 @@ class PostgresStore(EventLogStore):
                 (upload.filename, upload.report_date, upload.row_count_raw, upload.row_count_after_scope, now),
             )
             row = cur.fetchone()
-        conn.commit()
+        self._commit(conn)
         return row["id"]
 
     def upsert_permit(self, permit: PermitRecord) -> None:
@@ -175,6 +199,7 @@ class PostgresStore(EventLogStore):
                    current_status = EXCLUDED.current_status,
                    current_milestone = EXCLUDED.current_milestone,
                    community = EXCLUDED.community
+                WHERE EXCLUDED.last_seen_date >= permits.last_seen_date
                 """,
                 (
                     permit.record_number, permit.record_type, permit.description,
@@ -183,7 +208,7 @@ class PostgresStore(EventLogStore):
                     permit.community,
                 ),
             )
-        conn.commit()
+        self._commit(conn)
 
     def append_observation(self, obs: Observation) -> None:
         conn = self._get_conn()
@@ -196,7 +221,7 @@ class PostgresStore(EventLogStore):
                 """,
                 (obs.record_number, obs.status, obs.milestone, obs.observed_date, obs.upload_id, now),
             )
-        conn.commit()
+        self._commit(conn)
 
     def record_status_change(self, change: StatusChangeRecord) -> None:
         conn = self._get_conn()
@@ -213,7 +238,7 @@ class PostgresStore(EventLogStore):
                     change.change_date, change.is_tracked_milestone, change.is_backward,
                 ),
             )
-        conn.commit()
+        self._commit(conn)
 
     def get_timeline(self, record_number: str) -> list[TimelineEntry]:
         conn = self._get_conn()
@@ -268,6 +293,33 @@ class PostgresStore(EventLogStore):
 
     def get_all_permits(self) -> list[PermitRecord]:
         return list(self.get_current_statuses().values())
+
+    def get_snapshot(self, upload_id: int) -> list[PermitRecord]:
+        with self._get_conn().cursor() as cur:
+            cur.execute(
+                """SELECT p.*, o.status AS observed_status,
+                          o.milestone AS observed_milestone,
+                          u.report_date AS observed_report_date,
+                          (SELECT MIN(u0.report_date) FROM observations o0
+                           JOIN uploads u0 ON u0.id = o0.upload_id
+                           WHERE o0.record_number = o.record_number) AS first_observed_date
+                   FROM observations o JOIN permits p ON p.record_number = o.record_number
+                   JOIN uploads u ON u.id = o.upload_id
+                   WHERE o.upload_id = %s ORDER BY o.id""", (upload_id,),
+            )
+            rows = cur.fetchall()
+        permits = {}
+        for r in rows:
+            permits[r['record_number']] = PermitRecord(
+                record_number=r['record_number'], record_type=r['record_type'],
+                description=r['description'], address=r['address'],
+                city_state_zip=r['city_state_zip'],
+                first_seen_date=r['first_observed_date'],
+                last_seen_date=r['observed_report_date'],
+                current_status=r['observed_status'],
+                current_milestone=r['observed_milestone'], community=r.get('community') or '',
+            )
+        return list(permits.values())
 
     def get_upload_history(self) -> list[Upload]:
         conn = self._get_conn()
@@ -349,7 +401,7 @@ class PostgresStore(EventLogStore):
                    ON CONFLICT (street_name, community_name) DO NOTHING""",
                 (street_name.strip(), community_name.strip()),
             )
-        conn.commit()
+        self._commit(conn)
 
     def replace_all_street_communities(self, mappings: list[tuple[str, str]]) -> None:
         conn = self._get_conn()
@@ -360,7 +412,7 @@ class PostgresStore(EventLogStore):
                     "INSERT INTO street_community (street_name, community_name) VALUES (%s, %s)",
                     (street_name.strip(), community_name.strip()),
                 )
-        conn.commit()
+        self._commit(conn)
 
     def list_street_communities(self) -> list[StreetCommunityMapping]:
         conn = self._get_conn()
@@ -384,7 +436,7 @@ class PostgresStore(EventLogStore):
         conn = self._get_conn()
         with conn.cursor() as cur:
             cur.execute("DELETE FROM street_community WHERE id = %s", (mapping_id,))
-        conn.commit()
+        self._commit(conn)
 
     def delete_upload(self, upload_id: int) -> None:
         conn = self._get_conn()
@@ -425,5 +477,4 @@ class PostgresStore(EventLogStore):
                     (first_seen, last_seen, status, milestone, rn)
                 )
                 
-        conn.commit()
-
+        self._commit(conn)

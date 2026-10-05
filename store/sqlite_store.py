@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime, timezone
+from contextlib import contextmanager
 
 from store.interface import (
     EventLogStore, PermitRecord, Observation, Upload,
@@ -12,6 +13,7 @@ class SQLiteStore(EventLogStore):
     def __init__(self, db_path: str = ":memory:"):
         self.db_path = db_path
         self.conn: sqlite3.Connection | None = None
+        self._in_transaction = False
 
     def _get_conn(self) -> sqlite3.Connection:
         if self.conn is None:
@@ -20,6 +22,27 @@ class SQLiteStore(EventLogStore):
             self.conn.execute("PRAGMA journal_mode=WAL")
             self.conn.execute("PRAGMA foreign_keys=ON")
         return self.conn
+
+    def _commit(self, conn):
+        if not self._in_transaction:
+            conn.commit()
+
+    @contextmanager
+    def transaction(self):
+        """Publish an upload and all of its rows together, or roll them back."""
+        if self._in_transaction:
+            raise RuntimeError('Nested store transactions are not supported')
+        conn = self._get_conn()
+        conn.execute("BEGIN")
+        self._in_transaction = True
+        try:
+            yield
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            self._in_transaction = False
 
     def initialize(self) -> None:
         conn = self._get_conn()
@@ -85,7 +108,7 @@ class SQLiteStore(EventLogStore):
             );
             CREATE INDEX IF NOT EXISTS idx_street_community_street ON street_community(street_name);
         """)
-        conn.commit()
+        self._commit(conn)
 
     def get_current_statuses(self) -> dict[str, PermitRecord]:
         conn = self._get_conn()
@@ -131,7 +154,7 @@ class SQLiteStore(EventLogStore):
             "INSERT INTO uploads (filename, report_date, row_count_raw, row_count_after_scope, uploaded_at) VALUES (?, ?, ?, ?, ?)",
             (upload.filename, upload.report_date, upload.row_count_raw, upload.row_count_after_scope, now),
         )
-        conn.commit()
+        self._commit(conn)
         return cursor.lastrowid
 
     def upsert_permit(self, permit: PermitRecord) -> None:
@@ -144,7 +167,8 @@ class SQLiteStore(EventLogStore):
                last_seen_date=excluded.last_seen_date,
                current_status=excluded.current_status,
                current_milestone=excluded.current_milestone,
-               community=excluded.community""",
+               community=excluded.community
+               WHERE excluded.last_seen_date >= permits.last_seen_date""",
             (
                 permit.record_number, permit.record_type, permit.description,
                 permit.address, permit.city_state_zip, permit.first_seen_date,
@@ -152,7 +176,7 @@ class SQLiteStore(EventLogStore):
                 permit.community,
             ),
         )
-        conn.commit()
+        self._commit(conn)
 
     def append_observation(self, obs: Observation) -> None:
         conn = self._get_conn()
@@ -161,7 +185,7 @@ class SQLiteStore(EventLogStore):
             "INSERT INTO observations (record_number, status, milestone, observed_date, upload_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (obs.record_number, obs.status, obs.milestone, obs.observed_date, obs.upload_id, now),
         )
-        conn.commit()
+        self._commit(conn)
 
     def record_status_change(self, change: StatusChangeRecord) -> None:
         conn = self._get_conn()
@@ -175,7 +199,7 @@ class SQLiteStore(EventLogStore):
                 change.change_date, int(change.is_tracked_milestone), int(change.is_backward),
             ),
         )
-        conn.commit()
+        self._commit(conn)
 
     def get_timeline(self, record_number: str) -> list[TimelineEntry]:
         conn = self._get_conn()
@@ -217,6 +241,31 @@ class SQLiteStore(EventLogStore):
 
     def get_all_permits(self) -> list[PermitRecord]:
         return list(self.get_current_statuses().values())
+
+    def get_snapshot(self, upload_id: int) -> list[PermitRecord]:
+        rows = self._get_conn().execute(
+            """SELECT p.*, o.status AS observed_status,
+                      o.milestone AS observed_milestone,
+                      u.report_date AS observed_report_date,
+                      (SELECT MIN(u0.report_date) FROM observations o0
+                       JOIN uploads u0 ON u0.id = o0.upload_id
+                       WHERE o0.record_number = o.record_number) AS first_observed_date
+               FROM observations o JOIN permits p ON p.record_number = o.record_number
+               JOIN uploads u ON u.id = o.upload_id
+               WHERE o.upload_id = ? ORDER BY o.id""", (upload_id,),
+        ).fetchall()
+        permits = {}
+        for r in rows:
+            permits[r['record_number']] = PermitRecord(
+                record_number=r['record_number'], record_type=r['record_type'],
+                description=r['description'], address=r['address'],
+                city_state_zip=r['city_state_zip'],
+                first_seen_date=r['first_observed_date'],
+                last_seen_date=r['observed_report_date'],
+                current_status=r['observed_status'],
+                current_milestone=r['observed_milestone'], community=r['community'],
+            )
+        return list(permits.values())
 
     def get_upload_history(self) -> list[Upload]:
         conn = self._get_conn()
@@ -288,7 +337,7 @@ class SQLiteStore(EventLogStore):
                ON CONFLICT(street_name, community_name) DO NOTHING""",
             (street_name.strip(), community_name.strip()),
         )
-        conn.commit()
+        self._commit(conn)
 
     def replace_all_street_communities(self, mappings: list[tuple[str, str]]) -> None:
         conn = self._get_conn()
@@ -298,7 +347,7 @@ class SQLiteStore(EventLogStore):
                 "INSERT INTO street_community (street_name, community_name) VALUES (?, ?)",
                 (street_name.strip(), community_name.strip()),
             )
-        conn.commit()
+        self._commit(conn)
 
     def list_street_communities(self) -> list[StreetCommunityMapping]:
         conn = self._get_conn()
@@ -317,7 +366,7 @@ class SQLiteStore(EventLogStore):
     def delete_street_community(self, mapping_id: int) -> None:
         conn = self._get_conn()
         conn.execute("DELETE FROM street_community WHERE id = ?", (mapping_id,))
-        conn.commit()
+        self._commit(conn)
 
     def delete_upload(self, upload_id: int) -> None:
         conn = self._get_conn()
@@ -356,5 +405,4 @@ class SQLiteStore(EventLogStore):
                 (first_seen, last_seen, status, milestone, rn)
             )
             
-        conn.commit()
-
+        self._commit(conn)

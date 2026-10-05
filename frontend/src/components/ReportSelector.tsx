@@ -72,7 +72,7 @@ export function ReportSelector({
           key={day}
           disabled={!hasUpload}
           onClick={() => {
-            if (!fromDate || (fromDate && toDate)) {
+            if (!fromDate || (toDate && fromDate !== toDate)) {
               onSelect(dateStr, dateStr);
             } else if (dateStr < fromDate) {
               onSelect(dateStr, fromDate);
@@ -111,8 +111,8 @@ export function ReportSelector({
           </Button>
         </div>
         <div className="grid grid-cols-7 gap-1">
-          {["S", "M", "T", "W", "T", "F", "S"].map((d) => (
-            <div key={d} className="h-7 w-7 text-center text-[10px] text-gray-400 font-medium">
+          {["S", "M", "T", "W", "T", "F", "S"].map((d, index) => (
+            <div key={index} className="h-7 w-7 text-center text-[10px] text-gray-400 font-medium">
               {d}
             </div>
           ))}
@@ -166,7 +166,7 @@ export function ReportSelector({
                           : ""
                       }`}
                       onClick={() => {
-                        if (!fromDate || (fromDate && toDate)) {
+                        if (!fromDate || (toDate && fromDate !== toDate)) {
                           onSelect(u.report_date, u.report_date);
                         } else if (u.report_date < fromDate) {
                           onSelect(u.report_date, fromDate);
