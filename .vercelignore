@@ -1,0 +1,26 @@
+# Build dependencies and outputs are recreated by Vercel.
+.git
+.vercel
+.venv
+.vercel_python_packages
+.uv
+_uv
+node_modules
+frontend/node_modules
+frontend/dist
+dist
+permitflow.egg-info
+__pycache__
+*.pyc
+*.pyo
+
+# Keep local databases, secrets, logs and test fixtures out of deployment uploads.
+*.db
+*.db-*
+.env*
+*.log
+tests
+diagnostics
+frontend/src/test
+**/*.test.ts
+**/*.test.tsx
